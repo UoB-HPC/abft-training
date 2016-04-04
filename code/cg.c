@@ -7,8 +7,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-void spmv(uint32_t *rows, uint32_t *cols, double *values,
-          double *vector, double *output, unsigned N, unsigned nnz)
+typedef struct
+{
+  double value;
+  uint32_t row;
+  uint32_t col;
+} matrix_entry;
+
+void spmv(matrix_entry *matrix, double *vector, double *output,
+          unsigned N, unsigned nnz)
 {
   for (unsigned i = 0; i < N; i++)
   {
@@ -17,9 +24,11 @@ void spmv(uint32_t *rows, uint32_t *cols, double *values,
 
   for (unsigned i = 0; i < nnz; i++)
   {
-    uint32_t x = cols[i];
-    uint32_t y = rows[i];
-    output[x] += values[i] * vector[y];
+    matrix_entry element = matrix[i];
+
+    // TODO: check ECC
+
+    output[element.col] += element.value * vector[element.row];
   }
 }
 
@@ -31,9 +40,7 @@ int main(int argc, char *argv[])
   double percentage_nonzero = 0.01;
   double conv_threshold = 0.00001;
 
-  double   *A_vals = NULL;
-  uint32_t *A_rows = NULL;
-  uint32_t *A_cols = NULL;
+  matrix_entry *A = NULL;
 
   double *b = malloc(N*sizeof(double));
   double *x = malloc(N*sizeof(double));
@@ -59,22 +66,29 @@ int main(int argc, char *argv[])
       if (nnz+2 > allocated)
       {
         allocated += 512;
-        A_vals = realloc(A_vals, allocated*sizeof(double));
-        A_rows = realloc(A_rows, allocated*sizeof(uint32_t));
-        A_cols = realloc(A_cols, allocated*sizeof(uint32_t));
+        A = realloc(A, allocated*sizeof(matrix_entry));
       }
 
-      A_vals[nnz] = value;
-      A_rows[nnz] = y;
-      A_cols[nnz] = x;
+      matrix_entry element;
+      element.value = value;
+      element.row   = y;
+      element.col   = x;
+
+      // TODO: generate ECC
+
+      A[nnz] = element;
       nnz++;
 
       if (x == y)
         continue;
 
-      A_vals[nnz] = value;
-      A_rows[nnz] = x;
-      A_cols[nnz] = y;
+      element.value = value;
+      element.row   = x;
+      element.col   = y;
+
+      // TODO: generate ECC
+
+      A[nnz] = element;
       nnz++;
     }
 
@@ -91,7 +105,7 @@ int main(int argc, char *argv[])
 
   // r = b - Ax;
   // p = r
-  spmv(A_rows, A_cols, A_vals, x, r, N, nnz);
+  spmv(A, x, r, N, nnz);
   for (unsigned i = 0; i < N; i++)
   {
     p[i] = r[i] = b[i] - r[i];
@@ -108,7 +122,7 @@ int main(int argc, char *argv[])
   for (; itr < max_itrs && rr > conv_threshold; itr++)
   {
     // w = A*p
-    spmv(A_rows, A_cols, A_vals, p, w, N, nnz);
+    spmv(A, p, w, N, nnz);
 
     // pw = pT * A*p
     double pw = 0.0;
@@ -150,7 +164,7 @@ int main(int argc, char *argv[])
 
   // Compute Ax
   double *Ax = malloc(N*sizeof(double));
-  spmv(A_rows, A_cols, A_vals, x, Ax, N, nnz);
+  spmv(A, x, Ax, N, nnz);
 
   // Compare Ax to b
   double err_sq = 0.0;
@@ -165,9 +179,7 @@ int main(int argc, char *argv[])
   printf("max error   = %lf\n", max_err);
   printf("\n");
 
-  free(A_vals);
-  free(A_rows);
-  free(A_cols);
+  free(A);
   free(b);
   free(x);
   free(r);
