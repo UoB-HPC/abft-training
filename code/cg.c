@@ -3,60 +3,87 @@
 //
 
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-void spmv(double *matrix, double *vector, double *output, unsigned N)
+void spmv(uint32_t *rows, uint32_t *cols, double *values,
+          double *vector, double *output, unsigned N, unsigned nnz)
 {
-  for (unsigned y = 0; y < N; y++)
+  for (unsigned i = 0; i < N; i++)
   {
-    double tmp = 0.0;
-    for (unsigned x = 0; x < N; x++)
-    {
-      tmp += matrix[x + y*N] * vector[x];
-    }
-    output[y] = tmp;
+    output[i] = 0.0;
+  }
+
+  for (unsigned i = 0; i < nnz; i++)
+  {
+    uint32_t x = cols[i];
+    uint32_t y = rows[i];
+    output[x] += values[i] * vector[y];
   }
 }
 
 int main(int argc, char *argv[])
 {
   // TODO: Accept command-line arguments for these parameters
-  unsigned N = 256;
+  unsigned N = 1024;
   unsigned max_itrs = 5000;
+  double percentage_nonzero = 0.01;
   double conv_threshold = 0.000001;
 
-  printf("\n");
-  printf("matrix size           = %u x %u\n", N, N);
-  printf("maximum iterations    = %u\n", max_itrs);
-  printf("convergence threshold = %g\n", conv_threshold);
-  printf("\n");
+  // TODO: only allocate as much as necessary
+  double   *A_vals = malloc(N*N*sizeof(double));
+  uint32_t *A_rows = malloc(N*N*sizeof(uint32_t));
+  uint32_t *A_cols = malloc(N*N*sizeof(uint32_t));
 
-  double *A = malloc(N*N*sizeof(double));
   double *b = malloc(N*sizeof(double));
   double *x = malloc(N*sizeof(double));
   double *r = malloc(N*sizeof(double));
   double *p = malloc(N*sizeof(double));
   double *w = malloc(N*sizeof(double));
 
-  // Initialize symmetric matrix A and vectors b and x
-  // TODO: Load values from file
+  // Initialize symmetric sparse matrix A and vectors b and x
+  unsigned nnz = 0;
   for (unsigned y = 0; y < N; y++)
   {
     for (unsigned x = y; x < N; x++)
     {
+      // Decide if element should be non-zero
+      // Always true for the diagonal
+      double p = rand() / (double)RAND_MAX;
+      if (p >= (percentage_nonzero - 1.0/N) && x != y)
+        continue;
+
       double value = rand() / (double)RAND_MAX;
-      A[x + y*N] = value;
-      A[y + x*N] = value;
+
+      A_vals[nnz] = value;
+      A_rows[nnz] = y;
+      A_cols[nnz] = x;
+      nnz++;
+
+      if (x == y)
+        continue;
+
+      A_vals[nnz] = value;
+      A_rows[nnz] = x;
+      A_cols[nnz] = y;
+      nnz++;
     }
 
     b[y] = rand() / (double)RAND_MAX;
     x[y] = 0.0;
   }
 
+  printf("\n");
+  printf("matrix size           = %u x %u\n", N, N);
+  printf("number of non-zeros   = %u (%.2lf%%)\n", nnz, nnz/(double)(N*N)*100);
+  printf("maximum iterations    = %u\n", max_itrs);
+  printf("convergence threshold = %g\n", conv_threshold);
+  printf("\n");
+
   // r = b - Ax;
   // p = r
-  spmv(A, x, r, N);
+  spmv(A_rows, A_cols, A_vals, x, r, N, nnz);
   for (unsigned i = 0; i < N; i++)
   {
     p[i] = r[i] = b[i] - r[i];
@@ -73,7 +100,7 @@ int main(int argc, char *argv[])
   for (; itr < max_itrs && rr > conv_threshold; itr++)
   {
     // w = A*p
-    spmv(A, p, w, N);
+    spmv(A_rows, A_cols, A_vals, p, w, N, nnz);
 
     // pw = pT * A*p
     double pw = 0.0;
@@ -106,7 +133,7 @@ int main(int argc, char *argv[])
 
     rr = rr_new;
 
-    if (itr % 50 == 0)
+    if (itr % 100 == 0)
       printf("iteration %5u :  rr = %12.4lf\n", itr, rr);
   }
 
@@ -115,7 +142,7 @@ int main(int argc, char *argv[])
 
   // Compute Ax
   double *Ax = malloc(N*sizeof(double));
-  spmv(A, x, Ax, N);
+  spmv(A_rows, A_cols, A_vals, x, Ax, N, nnz);
 
   // Compare Ax to b
   double err_sq = 0.0;
@@ -130,7 +157,9 @@ int main(int argc, char *argv[])
   printf("max error   = %lf\n", max_err);
   printf("\n");
 
-  free(A);
+  free(A_vals);
+  free(A_rows);
+  free(A_cols);
   free(b);
   free(x);
   free(r);
