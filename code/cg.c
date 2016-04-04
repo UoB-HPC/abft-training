@@ -29,12 +29,11 @@ int main(int argc, char *argv[])
   unsigned N = 1024;
   unsigned max_itrs = 5000;
   double percentage_nonzero = 0.01;
-  double conv_threshold = 0.000001;
+  double conv_threshold = 0.00001;
 
-  // TODO: only allocate as much as necessary
-  double   *A_vals = malloc(N*N*sizeof(double));
-  uint32_t *A_rows = malloc(N*N*sizeof(uint32_t));
-  uint32_t *A_cols = malloc(N*N*sizeof(uint32_t));
+  double   *A_vals = NULL;
+  uint32_t *A_rows = NULL;
+  uint32_t *A_cols = NULL;
 
   double *b = malloc(N*sizeof(double));
   double *x = malloc(N*sizeof(double));
@@ -44,6 +43,7 @@ int main(int argc, char *argv[])
 
   // Initialize symmetric sparse matrix A and vectors b and x
   unsigned nnz = 0;
+  unsigned allocated = 0;
   for (unsigned y = 0; y < N; y++)
   {
     for (unsigned x = y; x < N; x++)
@@ -55,6 +55,14 @@ int main(int argc, char *argv[])
         continue;
 
       double value = rand() / (double)RAND_MAX;
+
+      if (nnz+2 > allocated)
+      {
+        allocated += 512;
+        A_vals = realloc(A_vals, allocated*sizeof(double));
+        A_rows = realloc(A_rows, allocated*sizeof(uint32_t));
+        A_cols = realloc(A_cols, allocated*sizeof(uint32_t));
+      }
 
       A_vals[nnz] = value;
       A_rows[nnz] = y;
