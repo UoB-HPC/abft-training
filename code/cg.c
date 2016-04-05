@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 struct
 {
@@ -14,6 +15,8 @@ struct
   int    max_itrs;       // max iterations to run
   double percent_nzero;  // percent of matrix to be non-zero
   double conv_threshold; // convergence threshold to stop CG
+
+  int    inject_bitflip; // flip a random bit in the matrix
 } params;
 
 typedef struct
@@ -125,6 +128,19 @@ int main(int argc, char *argv[])
   printf("convergence threshold = %g\n", params.conv_threshold);
   printf("\n");
 
+  if (params.inject_bitflip)
+  {
+    // Flip a random bit in a random matrix element
+    srand(time(NULL));
+    int index = rand() % nnz;
+    int bit   = rand() % 128;
+    int word  = bit / 32;
+    printf("*** flipping bit %d of (%d,%d) ***\n",
+           bit, A[index].col & 0x00FFFFFF, A[index].row & 0x00FFFFFF);
+
+    ((uint32_t*)(A+index))[word] ^= 1<<bit;
+  }
+
   // r = b - Ax;
   // p = r
   spmv(A, x, r, params.n, nnz);
@@ -233,6 +249,7 @@ void parseArguments(int argc, char *argv[])
   params.max_itrs       = 5000;
   params.percent_nzero  = 1.0;
   params.conv_threshold = 0.00001;
+  params.inject_bitflip = 0;
 
   for (int i = 1; i < argc; i++)
   {
@@ -268,17 +285,22 @@ void parseArguments(int argc, char *argv[])
         exit(1);
       }
     }
+    else if (!strcmp(argv[i], "--inject-bitflip") || !strcmp(argv[i], "-x"))
+    {
+      params.inject_bitflip = 1;
+    }
     else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h"))
     {
       printf("\n");
       printf("Usage: ./cg [OPTIONS]\n\n");
       printf("Options:\n");
       printf(
-        "  -h  --help                Print this message\n"
-        "  -c  --convergence    C    Convergence threshold\n"
-        "  -i  --iterations     I    Maximum number of iterations\n"
-        "  -n  --norder         N    Order of matrix A\n"
-        "  -p  --percent-nzero  P    Percentage of A to be non-zero (approx)\n"
+        "  -h  --help                 Print this message\n"
+        "  -c  --convergence     C    Convergence threshold\n"
+        "  -i  --iterations      I    Maximum number of iterations\n"
+        "  -n  --norder          N    Order of matrix A\n"
+        "  -p  --percent-nzero   P    Percentage of A to be non-zero (approx)\n"
+        "  -x  --inject-bitflip       Inject a random bit-flip into A\n"
       );
       printf("\n");
       exit(0);
@@ -387,7 +409,8 @@ void ecc_correct_flip(matrix_entry *element, uint32_t syndrome)
   if (is_power_of_2(hamm_bit))
     data_bit = __builtin_clz(hamm_bit) + 96;
 
-  printf("[ECC] correcting bit %u\n", data_bit);
+  printf("[ECC] correcting bit %u of (%d,%d)\n",
+         data_bit, element->col & 0x00FFFFFF, element->row & 0x00FFFFFF);
 
   // Unflip bit
   uint32_t word = data_bit / 32;
