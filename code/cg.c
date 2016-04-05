@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <sys/time.h>
 
 struct
 {
@@ -26,6 +27,7 @@ typedef struct
   uint32_t col;
 } matrix_entry;
 
+double   getTimestamp();
 void     parseArguments(int argc, char *argv[]);
 
 uint32_t ecc_compute_high8(matrix_entry element);
@@ -141,6 +143,8 @@ int main(int argc, char *argv[])
     ((uint32_t*)(A+index))[word] ^= 1<<bit;
   }
 
+  double start = getTimestamp();
+
   // r = b - Ax;
   // p = r
   spmv(A, x, r, params.n, nnz);
@@ -197,8 +201,12 @@ int main(int argc, char *argv[])
       printf("iteration %5u :  rr = %12.4lf\n", itr, rr);
   }
 
+  double end = getTimestamp();
+
   printf("\n");
   printf("ran for %u iterations\n", itr);
+
+  printf("\ntime taken = %7.2lf ms\n\n", (end-start)*1e-3);
 
   // Compute Ax
   double *Ax = malloc(params.n*sizeof(double));
@@ -226,6 +234,13 @@ int main(int argc, char *argv[])
   free(Ax);
 
   return 0;
+}
+
+double getTimestamp()
+{
+  struct timeval tv;
+  gettimeofday(&tv, NULL);
+  return tv.tv_usec + tv.tv_sec*1e6;
 }
 
 double parseDouble(const char *str)
