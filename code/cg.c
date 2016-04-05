@@ -14,6 +14,8 @@ typedef struct
   uint32_t col;
 } matrix_entry;
 
+uint32_t compute_ecc_high8(matrix_entry element);
+
 void spmv(matrix_entry *matrix, double *vector, double *output,
           unsigned N, unsigned nnz)
 {
@@ -26,7 +28,16 @@ void spmv(matrix_entry *matrix, double *vector, double *output,
   {
     matrix_entry element = matrix[i];
 
-    // TODO: check ECC
+    // Check ECC
+    uint32_t ecc = compute_ecc_high8(element);
+    if (ecc)
+    {
+      printf("error detected\n");
+      exit(1);
+    }
+
+    // Mask out ECC from high order column bits
+    element.col &= 0x00FFFFFF;
 
     output[element.col] += element.value * vector[element.row];
   }
@@ -74,7 +85,8 @@ int main(int argc, char *argv[])
       element.row   = y;
       element.col   = x;
 
-      // TODO: generate ECC
+      // Generate ECC and store in high order column bits
+      element.col |= compute_ecc_high8(element);
 
       A[nnz] = element;
       nnz++;
@@ -86,7 +98,8 @@ int main(int argc, char *argv[])
       element.row   = x;
       element.col   = y;
 
-      // TODO: generate ECC
+      // Generate ECC and store in high order column bits
+      element.col |= compute_ecc_high8(element);
 
       A[nnz] = element;
       nnz++;
@@ -188,4 +201,115 @@ int main(int argc, char *argv[])
   free(Ax);
 
   return 0;
+}
+
+#define ECC7_P1_0 0x56AAAD5B
+#define ECC7_P1_1 0xAB555555
+#define ECC7_P1_2 0xAAAAAAAA
+#define ECC7_P1_3 0x80AAAAAA
+
+#define ECC7_P2_0 0x9B33366D
+#define ECC7_P2_1 0xCD999999
+#define ECC7_P2_2 0xCCCCCCCC
+#define ECC7_P2_3 0x40CCCCCC
+
+#define ECC7_P3_0 0xE3C3C78E
+#define ECC7_P3_1 0xF1E1E1E1
+#define ECC7_P3_2 0xF0F0F0F0
+#define ECC7_P3_3 0x20F0F0F0
+
+#define ECC7_P4_0 0x03FC07F0
+#define ECC7_P4_1 0x01FE01FE
+#define ECC7_P4_2 0x00FF00FF
+#define ECC7_P4_3 0x10FF00FF
+
+#define ECC7_P5_0 0x03FFF800
+#define ECC7_P5_1 0x01FFFE00
+#define ECC7_P5_2 0x00FFFF00
+#define ECC7_P5_3 0x08FFFF00
+
+#define ECC7_P6_0 0xFC000000
+#define ECC7_P6_1 0x01FFFFFF
+#define ECC7_P6_2 0xFF000000
+#define ECC7_P6_3 0x04FFFFFF
+
+#define ECC7_P7_0 0x00000000
+#define ECC7_P7_1 0xFE000000
+#define ECC7_P7_2 0xFFFFFFFF
+#define ECC7_P7_3 0x02FFFFFF
+
+uint32_t compute_ecc_high8(matrix_entry element)
+{
+  uint32_t *data = (uint32_t*)&element;
+
+  uint32_t result = 0;
+
+  uint32_t p;
+
+  p = (data[0] & ECC7_P1_0) ^ (data[1] & ECC7_P1_1) ^
+      (data[2] & ECC7_P1_2) ^ (data[3] & ECC7_P1_3);
+  result |= __builtin_parity(p) << 31;
+
+  p = (data[0] & ECC7_P2_0) ^ (data[1] & ECC7_P2_1) ^
+      (data[2] & ECC7_P2_2) ^ (data[3] & ECC7_P2_3);
+  result |= __builtin_parity(p) << 30;
+
+  p = (data[0] & ECC7_P3_0) ^ (data[1] & ECC7_P3_1) ^
+      (data[2] & ECC7_P3_2) ^ (data[3] & ECC7_P3_3);
+  result |= __builtin_parity(p) << 29;
+
+  p = (data[0] & ECC7_P4_0) ^ (data[1] & ECC7_P4_1) ^
+      (data[2] & ECC7_P4_2) ^ (data[3] & ECC7_P4_3);
+  result |= __builtin_parity(p) << 28;
+
+  p = (data[0] & ECC7_P5_0) ^ (data[1] & ECC7_P5_1) ^
+      (data[2] & ECC7_P5_2) ^ (data[3] & ECC7_P5_3);
+  result |= __builtin_parity(p) << 27;
+
+  p = (data[0] & ECC7_P6_0) ^ (data[1] & ECC7_P6_1) ^
+      (data[2] & ECC7_P6_2) ^ (data[3] & ECC7_P6_3);
+  result |= __builtin_parity(p) << 26;
+
+  p = (data[0] & ECC7_P7_0) ^ (data[1] & ECC7_P7_1) ^
+      (data[2] & ECC7_P7_2) ^ (data[3] & ECC7_P7_3);
+  result |= __builtin_parity(p) << 25;
+
+  return result;
+}
+
+static int is_power_of_2(uint32_t x)
+{
+  return ((x != 0) && !(x & (x - 1)));
+}
+
+void gen_ecc7_masks()
+{
+  for (uint32_t p = 1; p <= 7; p++)
+  {
+    uint32_t x = 3;
+    for (int w = 0; w < 4; w++)
+    {
+      uint32_t mask = 0;
+      for (uint32_t b = 0; b < 32; b++)
+      {
+        if (is_power_of_2(x))
+          x++;
+
+        uint32_t bit = w*32 + b;
+        if (bit >= (128-7))
+        {
+          if ((128-bit) == p)
+            mask |= 0x1 << b;
+        }
+        else if (x & (0x1<<(p-1)))
+          mask |= 0x1 << b;
+
+        x++;
+      }
+      if (w == 3)
+        mask &= 0xFEFFFFFF;
+      printf("#define ECC7_P%d_%d 0x%08X\n", p, w, mask);
+    }
+    printf("\n");
+  }
 }
