@@ -23,8 +23,8 @@ struct
 typedef struct
 {
   double value;
-  uint32_t row;
   uint32_t col;
+  uint32_t row;
 } matrix_entry;
 
 double   getTimestamp();
@@ -53,8 +53,8 @@ void spmv(matrix_entry *matrix, double *vector, double *output,
       matrix[i] = element;
     }
 
-    // Mask out ECC from high order column bits
-    element.col &= 0x00FFFFFF;
+    // Mask out ECC from high order row bits
+    element.row &= 0x00FFFFFF;
 
     output[element.col] += element.value * vector[element.row];
   }
@@ -95,11 +95,11 @@ int main(int argc, char *argv[])
 
       matrix_entry element;
       element.value = value;
-      element.row   = y;
       element.col   = x;
+      element.row   = y;
 
-      // Generate ECC and store in high order column bits
-      element.col |= ecc_compute_high8(element);
+      // Generate ECC and store in high order row bits
+      element.row |= ecc_compute_high8(element);
 
       A[nnz] = element;
       nnz++;
@@ -108,11 +108,11 @@ int main(int argc, char *argv[])
         continue;
 
       element.value = value;
-      element.row   = x;
       element.col   = y;
+      element.row   = x;
 
-      // Generate ECC and store in high order column bits
-      element.col |= ecc_compute_high8(element);
+      // Generate ECC and store in high order row bits
+      element.row |= ecc_compute_high8(element);
 
       A[nnz] = element;
       nnz++;
