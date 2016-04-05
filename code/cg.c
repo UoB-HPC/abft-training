@@ -14,7 +14,8 @@ typedef struct
   uint32_t col;
 } matrix_entry;
 
-uint32_t compute_ecc_high8(matrix_entry element);
+uint32_t ecc_compute_high8(matrix_entry element);
+void     ecc_correct_flip(matrix_entry *element, uint32_t syndrome);
 
 void spmv(matrix_entry *matrix, double *vector, double *output,
           unsigned N, unsigned nnz)
@@ -29,11 +30,11 @@ void spmv(matrix_entry *matrix, double *vector, double *output,
     matrix_entry element = matrix[i];
 
     // Check ECC
-    uint32_t ecc = compute_ecc_high8(element);
-    if (ecc)
+    uint32_t syndrome = ecc_compute_high8(element);
+    if (syndrome)
     {
-      printf("error detected\n");
-      exit(1);
+      ecc_correct_flip(&element, syndrome);
+      matrix[i] = element;
     }
 
     // Mask out ECC from high order column bits
@@ -86,7 +87,7 @@ int main(int argc, char *argv[])
       element.col   = x;
 
       // Generate ECC and store in high order column bits
-      element.col |= compute_ecc_high8(element);
+      element.col |= ecc_compute_high8(element);
 
       A[nnz] = element;
       nnz++;
@@ -99,7 +100,7 @@ int main(int argc, char *argv[])
       element.col   = y;
 
       // Generate ECC and store in high order column bits
-      element.col |= compute_ecc_high8(element);
+      element.col |= ecc_compute_high8(element);
 
       A[nnz] = element;
       nnz++;
@@ -238,7 +239,7 @@ int main(int argc, char *argv[])
 #define ECC7_P7_2 0xFFFFFFFF
 #define ECC7_P7_3 0x02FFFFFF
 
-uint32_t compute_ecc_high8(matrix_entry element)
+uint32_t ecc_compute_high8(matrix_entry element)
 {
   uint32_t *data = (uint32_t*)&element;
 
@@ -280,6 +281,30 @@ uint32_t compute_ecc_high8(matrix_entry element)
 static int is_power_of_2(uint32_t x)
 {
   return ((x != 0) && !(x & (x - 1)));
+}
+
+void ecc_correct_flip(matrix_entry *element, uint32_t syndrome)
+{
+  uint32_t *data = (uint32_t*)element;
+
+  // Compute position of flipped bit
+  uint32_t hamm_bit = 0;
+  for (int p = 1; p <= 7; p++)
+  {
+    if ((syndrome >> (32-p)) & 0x1)
+      hamm_bit += 0x1<<(p-1);
+  }
+
+  // Map to actual data bit position
+  uint32_t data_bit = hamm_bit - (32-__builtin_clz(hamm_bit)) - 1;
+  if (is_power_of_2(hamm_bit))
+    data_bit = __builtin_clz(hamm_bit) + 96;
+
+  printf("[ECC] correcting bit %u\n", data_bit);
+
+  // Unflip bit
+  uint32_t word = data_bit / 32;
+  data[word] ^= 0x1 << (data_bit % 32);
 }
 
 void gen_ecc7_masks()
