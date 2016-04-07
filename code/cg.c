@@ -27,30 +27,35 @@ typedef struct
   uint32_t row;
 } matrix_entry;
 
+typedef struct
+{
+  unsigned nnz;
+  matrix_entry *elements;
+} sparse_matrix;
+
 double   getTimestamp();
 void     parseArguments(int argc, char *argv[]);
 
 uint32_t ecc_compute_high8(matrix_entry element);
 void     ecc_correct_flip(matrix_entry *element, uint32_t syndrome);
 
-void spmv(matrix_entry *matrix, double *vector, double *output,
-          unsigned N, unsigned nnz)
+void spmv(sparse_matrix matrix, double *vector, double *output, unsigned N)
 {
   for (unsigned i = 0; i < N; i++)
   {
     output[i] = 0.0;
   }
 
-  for (unsigned i = 0; i < nnz; i++)
+  for (unsigned i = 0; i < matrix.nnz; i++)
   {
-    matrix_entry element = matrix[i];
+    matrix_entry element = matrix.elements[i];
 
     // Check ECC
     uint32_t syndrome = ecc_compute_high8(element);
     if (syndrome)
     {
-      ecc_correct_flip(&element, syndrome);
-      matrix[i] = element;
+     ecc_correct_flip(&element, syndrome);
+     matrix.elements[i] = element;
     }
 
     // Mask out ECC from high order row bits
@@ -60,23 +65,18 @@ void spmv(matrix_entry *matrix, double *vector, double *output,
   }
 }
 
-int main(int argc, char *argv[])
+// Generate a random, sparse, symmetric, positive-definite matrix
+sparse_matrix initMatrix()
 {
-  parseArguments(argc, argv);
-
-  matrix_entry *A = NULL;
-
-  double *b = malloc(params.n*sizeof(double));
-  double *x = malloc(params.n*sizeof(double));
-  double *r = malloc(params.n*sizeof(double));
-  double *p = malloc(params.n*sizeof(double));
-  double *w = malloc(params.n*sizeof(double));
-
-  // Initialize symmetric sparse matrix A and vectors b and x
-  unsigned nnz = 0;
+  sparse_matrix M = {0, NULL};
   unsigned allocated = 0;
+
+  // TODO: this is too slow for large matrices
+  double *rowsum = malloc(params.n*sizeof(double));
   for (unsigned y = 0; y < params.n; y++)
   {
+    rowsum[y] = 0.0;
+
     for (unsigned x = y; x < params.n; x++)
     {
       // Decide if element should be non-zero
@@ -87,10 +87,10 @@ int main(int argc, char *argv[])
 
       double value = rand() / (double)RAND_MAX;
 
-      if (nnz+2 > allocated)
+      if (M.nnz+2 > allocated)
       {
         allocated += 512;
-        A = realloc(A, allocated*sizeof(matrix_entry));
+        M.elements = realloc(M.elements, allocated*sizeof(matrix_entry));
       }
 
       matrix_entry element;
@@ -98,11 +98,10 @@ int main(int argc, char *argv[])
       element.col   = x;
       element.row   = y;
 
-      // Generate ECC and store in high order row bits
-      element.row |= ecc_compute_high8(element);
+      M.elements[M.nnz] = element;
+      M.nnz++;
 
-      A[nnz] = element;
-      nnz++;
+      rowsum[y] += value;
 
       if (x == y)
         continue;
@@ -111,13 +110,48 @@ int main(int argc, char *argv[])
       element.col   = y;
       element.row   = x;
 
-      // Generate ECC and store in high order row bits
-      element.row |= ecc_compute_high8(element);
+      M.elements[M.nnz] = element;
+      M.nnz++;
 
-      A[nnz] = element;
-      nnz++;
+      rowsum[y] += value;
+    }
+  }
+
+  for (unsigned i = 0; i < M.nnz; i++)
+  {
+    matrix_entry element = M.elements[i];
+
+    // Increase the diagonal by the row-sum
+    if (element.col == element.row)
+    {
+      element.value += rowsum[element.row] + 1;
     }
 
+    // Generate ECC and store in high order row bits
+    element.row |= ecc_compute_high8(element);
+    M.elements[i] = element;
+  }
+
+  free(rowsum);
+
+  return M;
+}
+
+
+int main(int argc, char *argv[])
+{
+  parseArguments(argc, argv);
+
+  sparse_matrix A = initMatrix();
+  double *b = malloc(params.n*sizeof(double));
+  double *x = malloc(params.n*sizeof(double));
+  double *r = malloc(params.n*sizeof(double));
+  double *p = malloc(params.n*sizeof(double));
+  double *w = malloc(params.n*sizeof(double));
+
+  // Initialize vectors b and x
+  for (unsigned y = 0; y < params.n; y++)
+  {
     b[y] = rand() / (double)RAND_MAX;
     x[y] = 0.0;
   }
@@ -125,7 +159,7 @@ int main(int argc, char *argv[])
   printf("\n");
   printf("matrix size           = %u x %u\n", params.n, params.n);
   printf("number of non-zeros   = %u (%.2lf%%)\n",
-         nnz, nnz/(double)(params.n*params.n)*100);
+         A.nnz, A.nnz/((double)params.n*(double)params.n)*100);
   printf("maximum iterations    = %u\n", params.max_itrs);
   printf("convergence threshold = %g\n", params.conv_threshold);
   printf("\n");
@@ -134,20 +168,21 @@ int main(int argc, char *argv[])
   {
     // Flip a random bit in a random matrix element
     srand(time(NULL));
-    int index = rand() % nnz;
+    int index = rand() % A.nnz;
     int bit   = rand() % 128;
     int word  = bit / 32;
-    printf("*** flipping bit %d of (%d,%d) ***\n",
-           bit, A[index].col & 0x00FFFFFF, A[index].row & 0x00FFFFFF);
+    printf("*** flipping bit %d of (%d,%d) ***\n", bit,
+           A.elements[index].col & 0x00FFFFFF,
+           A.elements[index].row & 0x00FFFFFF);
 
-    ((uint32_t*)(A+index))[word] ^= 1<<bit;
+    ((uint32_t*)(A.elements+index))[word] ^= 1<<bit;
   }
 
   double start = getTimestamp();
 
   // r = b - Ax;
   // p = r
-  spmv(A, x, r, params.n, nnz);
+  spmv(A, x, r, params.n);
   for (unsigned i = 0; i < params.n; i++)
   {
     p[i] = r[i] = b[i] - r[i];
@@ -164,7 +199,7 @@ int main(int argc, char *argv[])
   for (; itr < params.max_itrs && rr > params.conv_threshold; itr++)
   {
     // w = A*p
-    spmv(A, p, w, params.n, nnz);
+    spmv(A, p, w, params.n);
 
     // pw = pT * A*p
     double pw = 0.0;
@@ -197,7 +232,7 @@ int main(int argc, char *argv[])
 
     rr = rr_new;
 
-    if (itr % 100 == 0)
+    if (itr % 10 == 0)
       printf("iteration %5u :  rr = %12.4lf\n", itr, rr);
   }
 
@@ -210,7 +245,7 @@ int main(int argc, char *argv[])
 
   // Compute Ax
   double *Ax = malloc(params.n*sizeof(double));
-  spmv(A, x, Ax, params.n, nnz);
+  spmv(A, x, Ax, params.n);
 
   // Compare Ax to b
   double err_sq = 0.0;
@@ -225,7 +260,7 @@ int main(int argc, char *argv[])
   printf("max error   = %lf\n", max_err);
   printf("\n");
 
-  free(A);
+  free(A.elements);
   free(b);
   free(x);
   free(r);
