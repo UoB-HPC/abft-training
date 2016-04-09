@@ -20,6 +20,7 @@ struct
   int    inject_bitflip; // flip a random bit in the matrix
 } params;
 
+// TODO: Use same layout as slides (col,row,value)
 typedef struct
 {
   double value;
