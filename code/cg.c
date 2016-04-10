@@ -374,14 +374,14 @@ double get_timestamp()
   return tv.tv_usec + tv.tv_sec*1e6;
 }
 
-double parseDouble(const char *str)
+double parse_double(const char *str)
 {
   char *next;
   double value = strtod(str, &next);
   return strlen(next) ? -1 : value;
 }
 
-int parseInt(const char *str)
+int parse_int(const char *str)
 {
   char *next;
   int value = strtoul(str, &next, 10);
@@ -393,7 +393,7 @@ void parse_arguments(int argc, char *argv[])
   // Set defaults
   params.n              = 1e6;
   params.max_itrs       = 1000;
-  params.percent_nzero  = 1.0;
+  params.percent_nzero  = 0.001;
   params.conv_threshold = 0.001;
   params.inject_bitflip = 0;
 
@@ -401,7 +401,7 @@ void parse_arguments(int argc, char *argv[])
   {
     if (!strcmp(argv[i], "--convergence") || !strcmp(argv[i], "-c"))
     {
-      if (++i >= argc || (params.conv_threshold = parseDouble(argv[i])) < 0)
+      if (++i >= argc || (params.conv_threshold = parse_double(argv[i])) < 0)
       {
         printf("Invalid convergence threshold\n");
         exit(1);
@@ -409,7 +409,7 @@ void parse_arguments(int argc, char *argv[])
     }
     else if (!strcmp(argv[i], "--iterations") || !strcmp(argv[i], "-i"))
     {
-      if (++i >= argc || (params.max_itrs = parseInt(argv[i])) < 0)
+      if (++i >= argc || (params.max_itrs = parse_int(argv[i])) < 0)
       {
         printf("Invalid number of iterations\n");
         exit(1);
@@ -417,7 +417,7 @@ void parse_arguments(int argc, char *argv[])
     }
     else if (!strcmp(argv[i], "--norder") || !strcmp(argv[i], "-n"))
     {
-      if (++i >= argc || (params.n = parseInt(argv[i])) < 1)
+      if (++i >= argc || (params.n = parse_int(argv[i])) < 1)
       {
         printf("Invalid matrix order\n");
         exit(1);
@@ -425,7 +425,7 @@ void parse_arguments(int argc, char *argv[])
     }
     else if (!strcmp(argv[i], "--percent-nonzero") || !strcmp(argv[i], "-p"))
     {
-      if (++i >= argc || (params.percent_nzero = parseDouble(argv[i])) < 0)
+      if (++i >= argc || (params.percent_nzero = parse_double(argv[i])) < 0)
       {
         printf("Invalid number of parents\n");
         exit(1);
