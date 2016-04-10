@@ -311,7 +311,7 @@ void parse_arguments(int argc, char *argv[])
   }
 }
 
-int cmp_elem(const void *a, const void *b)
+int compare_matrix_elements(const void *a, const void *b)
 {
   matrix_entry _a = *(matrix_entry*)a;
   matrix_entry _b = *(matrix_entry*)b;
@@ -383,7 +383,8 @@ sparse_matrix generate_sparse_matrix(unsigned N, double percent_nonzero)
     }
   }
 
-  qsort(M.elements, M.nnz, sizeof(matrix_entry), cmp_elem);
+  // TODO: Get rid of this sort if we don't care about element order
+  qsort(M.elements, M.nnz, sizeof(matrix_entry), compare_matrix_elements);
 
   for (unsigned i = 0; i < M.nnz; i++)
   {
@@ -395,9 +396,6 @@ sparse_matrix generate_sparse_matrix(unsigned N, double percent_nonzero)
       element.value += rowsum[element.row];
     }
 
-    // Generate ECC and store in high order row bits
-    element.row |= ecc_compute_high8(element);
-
     M.elements[i] = element;
   }
 
@@ -407,6 +405,7 @@ sparse_matrix generate_sparse_matrix(unsigned N, double percent_nonzero)
 }
 
 // Generate a random, sparse, symmetric, positive-definite matrix
+// TODO: Delete this once confirmed that faster (less random) approach is fine
 sparse_matrix generate_sparse_matrix_slow(unsigned N, double percent_nonzero)
 {
   sparse_matrix M = {0, NULL};
@@ -456,7 +455,7 @@ sparse_matrix generate_sparse_matrix_slow(unsigned N, double percent_nonzero)
     }
   }
 
-  qsort(M.elements, M.nnz, sizeof(matrix_entry), cmp_elem);
+  qsort(M.elements, M.nnz, sizeof(matrix_entry), compare_matrix_elements);
 
   for (unsigned i = 0; i < M.nnz; i++)
   {
