@@ -73,14 +73,16 @@ void spmv(sparse_matrix matrix, double *vector, double *result, unsigned N)
     // Load non-zero element
     matrix_entry element = matrix.elements[i];
 
-    // TODO: Check ECC here
-    // Use the ecc_compute_col8 function to all of the parity bits
-    // If there was an error use the ecc_correct_col8 function to
-    // correct it
+    // Check ECC
+    uint32_t syndrome = ecc_compute_col8(element);
+    if (syndrome)
+    {
+      ecc_correct_col8(&element, syndrome);
+      matrix.elements[i] = element;
+    }
 
-    // TODO: Mask out the parity bits from the high order column bits so that we
-    // can use the column index
-    // Use the & operator (bitwise AND) with an approriate mask
+    // Mask out ECC from high order column bits
+    element.col &= 0x00FFFFFF;
 
     // Multiply element value by the corresponding vector value
     // and accumulate into result vector
@@ -99,9 +101,8 @@ int main(int argc, char *argv[])
   {
     matrix_entry element = A.elements[i];
 
-    // TODO: Generate parity bits and store in high order column bits
-    // Use the ecc_compute_col8 function to generate the parity bits
-    // and then add them to the column index with the | operator (bitwise OR)
+    // Generate ECC and store in high order column bits
+    element.col |= ecc_compute_col8(element);
 
     A.elements[i] = element;
   }
