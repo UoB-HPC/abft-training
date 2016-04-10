@@ -34,21 +34,27 @@ typedef struct
   matrix_entry *elements;
 } sparse_matrix;
 
+sparse_matrix generate_sparse_matrix(unsigned N, double percent_nonzero);
+
 double   get_timestamp();
 void     parse_arguments(int argc, char *argv[]);
 
 uint32_t ecc_compute_high8(matrix_entry element);
 void     ecc_correct_flip(matrix_entry *element, uint32_t syndrome);
 
-void spmv(sparse_matrix matrix, double *vector, double *output, unsigned N)
+// Sparse matrix vector product
+// Multiplies `matrix` by `vector` and stores answer in `result`
+// The matrix and vector dimensions are `N`
+void spmv(sparse_matrix matrix, double *vector, double *result, unsigned N)
 {
+  // Initialize result vector to zero
   for (unsigned i = 0; i < N; i++)
-  {
-    output[i] = 0.0;
-  }
+    result[i] = 0.0;
 
+  // Loop over non-zeros in matrix
   for (unsigned i = 0; i < matrix.nnz; i++)
   {
+    // Load non-zero element
     matrix_entry element = matrix.elements[i];
 
     // Check ECC
@@ -62,183 +68,29 @@ void spmv(sparse_matrix matrix, double *vector, double *output, unsigned N)
     // Mask out ECC from high order row bits
     element.row &= 0x00FFFFFF;
 
-    output[element.col] += element.value * vector[element.row];
+    // Multiply element value by the corresponding vector value
+    // and accumulate into result vector
+    result[element.col] += element.value * vector[element.row];
   }
-}
-
-int cmp_elem(const void *a, const void *b)
-{
-  matrix_entry _a = *(matrix_entry*)a;
-  matrix_entry _b = *(matrix_entry*)b;
-
-  if (_a.row < _b.row)
-  {
-    return -1;
-  }
-  else if (_a.row > _b.row)
-  {
-    return 1;
-  }
-  else
-  {
-    return _a.col < _b.col;
-  }
-}
-
-// Generate a random, sparse, symmetric, positive-definite matrix
-sparse_matrix init_matrix()
-{
-  sparse_matrix M = {0, NULL};
-  unsigned allocated = 0;
-
-  double *rowsum = calloc(params.n, sizeof(double));
-
-  // Loop over rows
-  for (unsigned y = 0; y < params.n; y++)
-  {
-    int stride;
-    for (int x = y; x < params.n; x += stride)
-    {
-      // Calculate stride to next non-zero
-      // +/- 1 to make things a little less predicatable
-      stride = 100/params.percent_nzero + (2*(rand() / (double)RAND_MAX) - 1);
-      if (stride == 0)
-        stride = 1;
-
-      // Allocate more element data if needed
-      if (M.nnz+2 > allocated)
-      {
-        allocated += 1024;
-        M.elements = realloc(M.elements, allocated*sizeof(matrix_entry));
-      }
-
-      double value = rand() / (double)RAND_MAX;
-
-      matrix_entry element;
-      element.value = value;
-      element.col   = x;
-      element.row   = y;
-
-      M.elements[M.nnz] = element;
-      M.nnz++;
-
-      rowsum[y] += value;
-
-      if (x == y)
-        continue;
-
-      element.value = value;
-      element.col   = y;
-      element.row   = x;
-
-      M.elements[M.nnz] = element;
-      M.nnz++;
-
-      rowsum[x] += value;
-    }
-  }
-
-  qsort(M.elements, M.nnz, sizeof(matrix_entry), cmp_elem);
-
-  for (unsigned i = 0; i < M.nnz; i++)
-  {
-    matrix_entry element = M.elements[i];
-
-    // Increase the diagonal by the row-sum
-    if (element.col == element.row)
-    {
-      element.value += rowsum[element.row];
-    }
-
-    // Generate ECC and store in high order row bits
-    element.row |= ecc_compute_high8(element);
-
-    M.elements[i] = element;
-  }
-
-  free(rowsum);
-
-  return M;
-}
-
-// Generate a random, sparse, symmetric, positive-definite matrix
-sparse_matrix init_matrix_slow()
-{
-  sparse_matrix M = {0, NULL};
-  unsigned allocated = 0;
-
-  double *rowsum = calloc(params.n, sizeof(double));
-
-  for (unsigned y = 0; y < params.n; y++)
-  {
-    for (unsigned x = y; x < params.n; x++)
-    {
-      // Decide if element should be non-zero
-      // Always true for the diagonal
-      double p = rand() / (double)RAND_MAX;
-      if (p >= ((params.percent_nzero/100) - 1.0/params.n) && x != y)
-        continue;
-
-      // Allocate more element data if needed
-      if (M.nnz+2 > allocated)
-      {
-        allocated += 1024;
-        M.elements = realloc(M.elements, allocated*sizeof(matrix_entry));
-      }
-
-      double value = rand() / (double)RAND_MAX;
-
-      matrix_entry element;
-      element.value = value;
-      element.col   = x;
-      element.row   = y;
-
-      M.elements[M.nnz] = element;
-      M.nnz++;
-
-      rowsum[y] += value;
-
-      if (x == y)
-        continue;
-
-      element.col   = y;
-      element.row   = x;
-
-      M.elements[M.nnz] = element;
-      M.nnz++;
-
-      rowsum[x] += value;
-    }
-  }
-
-  qsort(M.elements, M.nnz, sizeof(matrix_entry), cmp_elem);
-
-  for (unsigned i = 0; i < M.nnz; i++)
-  {
-    matrix_entry element = M.elements[i];
-
-    // Increase the diagonal by the row-sum
-    if (element.col == element.row)
-    {
-      element.value += rowsum[element.row] + 1;
-    }
-
-    // Generate ECC and store in high order row bits
-    element.row |= ecc_compute_high8(element);
-
-    M.elements[i] = element;
-  }
-
-  free(rowsum);
-
-  return M;
 }
 
 int main(int argc, char *argv[])
 {
   parse_arguments(argc, argv);
 
-  sparse_matrix A = init_matrix();
+  sparse_matrix A = generate_sparse_matrix(params.n, params.percent_nzero);
+
+  // Add ECC protection to matrix elements
+  for (unsigned i = 0; i < A.nnz; i++)
+  {
+    matrix_entry element = A.elements[i];
+
+    // Generate ECC and store in high order row bits
+    element.row |= ecc_compute_high8(element);
+
+    A.elements[i] = element;
+  }
+
   double *b = malloc(params.n*sizeof(double));
   double *x = malloc(params.n*sizeof(double));
   double *r = malloc(params.n*sizeof(double));
@@ -457,6 +309,171 @@ void parse_arguments(int argc, char *argv[])
       exit(1);
     }
   }
+}
+
+int cmp_elem(const void *a, const void *b)
+{
+  matrix_entry _a = *(matrix_entry*)a;
+  matrix_entry _b = *(matrix_entry*)b;
+
+  if (_a.row < _b.row)
+  {
+    return -1;
+  }
+  else if (_a.row > _b.row)
+  {
+    return 1;
+  }
+  else
+  {
+    return _a.col < _b.col;
+  }
+}
+
+// Generate a random, sparse, symmetric, positive-definite matrix
+sparse_matrix generate_sparse_matrix(unsigned N, double percent_nonzero)
+{
+  sparse_matrix M = {0, NULL};
+  unsigned allocated = 0;
+
+  double *rowsum = calloc(N, sizeof(double));
+
+  // Loop over rows
+  for (unsigned y = 0; y < N; y++)
+  {
+    int stride;
+    for (int x = y; x < N; x += stride)
+    {
+      // Calculate stride to next non-zero
+      // +/- 1 to make things a little less predicatable
+      stride = 100/percent_nonzero + (2*(rand() / (double)RAND_MAX) - 1);
+      if (stride == 0)
+        stride = 1;
+
+      // Allocate more element data if needed
+      if (M.nnz+2 > allocated)
+      {
+        allocated += 1024;
+        M.elements = realloc(M.elements, allocated*sizeof(matrix_entry));
+      }
+
+      double value = rand() / (double)RAND_MAX;
+
+      matrix_entry element;
+      element.value = value;
+      element.col   = x;
+      element.row   = y;
+
+      M.elements[M.nnz] = element;
+      M.nnz++;
+
+      rowsum[y] += value;
+
+      if (x == y)
+        continue;
+
+      element.value = value;
+      element.col   = y;
+      element.row   = x;
+
+      M.elements[M.nnz] = element;
+      M.nnz++;
+
+      rowsum[x] += value;
+    }
+  }
+
+  qsort(M.elements, M.nnz, sizeof(matrix_entry), cmp_elem);
+
+  for (unsigned i = 0; i < M.nnz; i++)
+  {
+    matrix_entry element = M.elements[i];
+
+    // Increase the diagonal by the row-sum
+    if (element.col == element.row)
+    {
+      element.value += rowsum[element.row];
+    }
+
+    // Generate ECC and store in high order row bits
+    element.row |= ecc_compute_high8(element);
+
+    M.elements[i] = element;
+  }
+
+  free(rowsum);
+
+  return M;
+}
+
+// Generate a random, sparse, symmetric, positive-definite matrix
+sparse_matrix generate_sparse_matrix_slow(unsigned N, double percent_nonzero)
+{
+  sparse_matrix M = {0, NULL};
+  unsigned allocated = 0;
+
+  double *rowsum = calloc(N, sizeof(double));
+
+  for (unsigned y = 0; y < N; y++)
+  {
+    for (unsigned x = y; x < N; x++)
+    {
+      // Decide if element should be non-zero
+      // Always true for the diagonal
+      double p = rand() / (double)RAND_MAX;
+      if (p >= ((percent_nonzero/100) - 1.0/N) && x != y)
+        continue;
+
+      // Allocate more element data if needed
+      if (M.nnz+2 > allocated)
+      {
+        allocated += 1024;
+        M.elements = realloc(M.elements, allocated*sizeof(matrix_entry));
+      }
+
+      double value = rand() / (double)RAND_MAX;
+
+      matrix_entry element;
+      element.value = value;
+      element.col   = x;
+      element.row   = y;
+
+      M.elements[M.nnz] = element;
+      M.nnz++;
+
+      rowsum[y] += value;
+
+      if (x == y)
+        continue;
+
+      element.col   = y;
+      element.row   = x;
+
+      M.elements[M.nnz] = element;
+      M.nnz++;
+
+      rowsum[x] += value;
+    }
+  }
+
+  qsort(M.elements, M.nnz, sizeof(matrix_entry), cmp_elem);
+
+  for (unsigned i = 0; i < M.nnz; i++)
+  {
+    matrix_entry element = M.elements[i];
+
+    // Increase the diagonal by the row-sum
+    if (element.col == element.row)
+    {
+      element.value += rowsum[element.row] + 1;
+    }
+
+    M.elements[i] = element;
+  }
+
+  free(rowsum);
+
+  return M;
 }
 
 #define ECC7_P1_0 0x56AAAD5B

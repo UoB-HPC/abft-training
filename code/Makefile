@@ -9,3 +9,5 @@ cg: cg.c
 
 clean:
 	rm -f cg
+
+.PHONY: clean
