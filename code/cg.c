@@ -23,9 +23,9 @@ struct
 // TODO: Use same layout as slides (col,row,value)
 typedef struct
 {
-  double value;
   uint32_t col;
   uint32_t row;
+  double value;
 } matrix_entry;
 
 typedef struct
@@ -65,8 +65,8 @@ void spmv(sparse_matrix matrix, double *vector, double *result, unsigned N)
      matrix.elements[i] = element;
     }
 
-    // Mask out ECC from high order row bits
-    element.row &= 0x00FFFFFF;
+    // Mask out ECC from high order column bits
+    element.col &= 0x00FFFFFF;
 
     // Multiply element value by the corresponding vector value
     // and accumulate into result vector
@@ -85,8 +85,8 @@ int main(int argc, char *argv[])
   {
     matrix_entry element = A.elements[i];
 
-    // Generate ECC and store in high order row bits
-    element.row |= ecc_compute_high8(element);
+    // Generate ECC and store in high order column bits
+    element.col |= ecc_compute_high8(element);
 
     A.elements[i] = element;
   }
@@ -475,40 +475,40 @@ sparse_matrix generate_sparse_matrix_slow(unsigned N, double percent_nonzero)
   return M;
 }
 
-#define ECC7_P1_0 0x56AAAD5B
+#define ECC7_P1_0 0x80AAAD5B
 #define ECC7_P1_1 0xAB555555
 #define ECC7_P1_2 0xAAAAAAAA
-#define ECC7_P1_3 0x80AAAAAA
+#define ECC7_P1_3 0x55AAAAAA
 
-#define ECC7_P2_0 0x9B33366D
+#define ECC7_P2_0 0x4033366D
 #define ECC7_P2_1 0xCD999999
 #define ECC7_P2_2 0xCCCCCCCC
-#define ECC7_P2_3 0x40CCCCCC
+#define ECC7_P2_3 0x66CCCCCC
 
-#define ECC7_P3_0 0xE3C3C78E
+#define ECC7_P3_0 0x20C3C78E
 #define ECC7_P3_1 0xF1E1E1E1
 #define ECC7_P3_2 0xF0F0F0F0
-#define ECC7_P3_3 0x20F0F0F0
+#define ECC7_P3_3 0x78F0F0F0
 
-#define ECC7_P4_0 0x03FC07F0
+#define ECC7_P4_0 0x10FC07F0
 #define ECC7_P4_1 0x01FE01FE
 #define ECC7_P4_2 0x00FF00FF
-#define ECC7_P4_3 0x10FF00FF
+#define ECC7_P4_3 0x80FF00FF
 
-#define ECC7_P5_0 0x03FFF800
+#define ECC7_P5_0 0x08FFF800
 #define ECC7_P5_1 0x01FFFE00
 #define ECC7_P5_2 0x00FFFF00
-#define ECC7_P5_3 0x08FFFF00
+#define ECC7_P5_3 0x00FFFF00
 
-#define ECC7_P6_0 0xFC000000
+#define ECC7_P6_0 0x04000000
 #define ECC7_P6_1 0x01FFFFFF
 #define ECC7_P6_2 0xFF000000
-#define ECC7_P6_3 0x04FFFFFF
+#define ECC7_P6_3 0x00FFFFFF
 
-#define ECC7_P7_0 0x00000000
+#define ECC7_P7_0 0x02000000
 #define ECC7_P7_1 0xFE000000
 #define ECC7_P7_2 0xFFFFFFFF
-#define ECC7_P7_3 0x02FFFFFF
+#define ECC7_P7_3 0x00FFFFFF
 
 uint32_t ecc_compute_high8(matrix_entry element)
 {
@@ -569,7 +569,7 @@ void ecc_correct_flip(matrix_entry *element, uint32_t syndrome)
   // Map to actual data bit position
   uint32_t data_bit = hamm_bit - (32-__builtin_clz(hamm_bit)) - 1;
   if (is_power_of_2(hamm_bit))
-    data_bit = __builtin_clz(hamm_bit) + 96;
+    data_bit = __builtin_clz(hamm_bit);
 
   printf("[ECC] correcting bit %u of (%d,%d)\n",
          data_bit, element->col & 0x00FFFFFF, element->row & 0x00FFFFFF);
@@ -593,9 +593,9 @@ void gen_ecc7_masks()
           x++;
 
         uint32_t bit = w*32 + b;
-        if (bit >= (128-7))
+        if (bit >= (32-7) && bit < 32)
         {
-          if ((128-bit) == p)
+          if ((32-bit) == p)
             mask |= 0x1 << b;
         }
         else if (x & (0x1<<(p-1)))
@@ -603,7 +603,7 @@ void gen_ecc7_masks()
 
         x++;
       }
-      if (w == 3)
+      if (w == 0)
         mask &= 0xFEFFFFFF;
       printf("#define ECC7_P%d_%d 0x%08X\n", p, w, mask);
     }
