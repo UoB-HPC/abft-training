@@ -39,8 +39,10 @@ sparse_matrix generate_sparse_matrix(unsigned N, double percent_nonzero);
 double   get_timestamp();
 void     parse_arguments(int argc, char *argv[]);
 
-uint32_t ecc_compute_high8(matrix_entry element);
-void     ecc_correct_flip(matrix_entry *element, uint32_t syndrome);
+// ECC functions that operate with parity bits stored
+// in high 8 bits of column index
+uint32_t ecc_compute_col8(matrix_entry element);
+void     ecc_correct_col8(matrix_entry *element, uint32_t syndrome);
 
 // Sparse matrix vector product
 // Multiplies `matrix` by `vector` and stores answer in `result`
@@ -58,10 +60,10 @@ void spmv(sparse_matrix matrix, double *vector, double *result, unsigned N)
     matrix_entry element = matrix.elements[i];
 
     // Check ECC
-    uint32_t syndrome = ecc_compute_high8(element);
+    uint32_t syndrome = ecc_compute_col8(element);
     if (syndrome)
     {
-     ecc_correct_flip(&element, syndrome);
+     ecc_correct_col8(&element, syndrome);
      matrix.elements[i] = element;
     }
 
@@ -86,7 +88,7 @@ int main(int argc, char *argv[])
     matrix_entry element = A.elements[i];
 
     // Generate ECC and store in high order column bits
-    element.col |= ecc_compute_high8(element);
+    element.col |= ecc_compute_col8(element);
 
     A.elements[i] = element;
   }
@@ -510,7 +512,7 @@ sparse_matrix generate_sparse_matrix_slow(unsigned N, double percent_nonzero)
 #define ECC7_P7_2 0xFFFFFFFF
 #define ECC7_P7_3 0x00FFFFFF
 
-uint32_t ecc_compute_high8(matrix_entry element)
+uint32_t ecc_compute_col8(matrix_entry element)
 {
   uint32_t *data = (uint32_t*)&element;
 
@@ -554,7 +556,7 @@ static int is_power_of_2(uint32_t x)
   return ((x != 0) && !(x & (x - 1)));
 }
 
-void ecc_correct_flip(matrix_entry *element, uint32_t syndrome)
+void ecc_correct_col8(matrix_entry *element, uint32_t syndrome)
 {
   uint32_t *data = (uint32_t*)element;
 
