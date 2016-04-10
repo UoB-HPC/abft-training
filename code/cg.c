@@ -571,12 +571,12 @@ void ecc_correct_flip(matrix_entry *element, uint32_t syndrome)
   if (is_power_of_2(hamm_bit))
     data_bit = __builtin_clz(hamm_bit);
 
-  printf("[ECC] correcting bit %u of (%d,%d)\n",
-         data_bit, element->col & 0x00FFFFFF, element->row & 0x00FFFFFF);
-
   // Unflip bit
   uint32_t word = data_bit / 32;
   data[word] ^= 0x1 << (data_bit % 32);
+
+  printf("[ECC] corrected bit %u of (%d,%d)\n",
+         data_bit, element->col & 0x00FFFFFF, element->row & 0x00FFFFFF);
 }
 
 void gen_ecc7_masks()
