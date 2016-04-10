@@ -34,8 +34,8 @@ typedef struct
   matrix_entry *elements;
 } sparse_matrix;
 
-double   getTimestamp();
-void     parseArguments(int argc, char *argv[]);
+double   get_timestamp();
+void     parse_arguments(int argc, char *argv[]);
 
 uint32_t ecc_compute_high8(matrix_entry element);
 void     ecc_correct_flip(matrix_entry *element, uint32_t syndrome);
@@ -66,33 +66,53 @@ void spmv(sparse_matrix matrix, double *vector, double *output, unsigned N)
   }
 }
 
+int cmp_elem(const void *a, const void *b)
+{
+  matrix_entry _a = *(matrix_entry*)a;
+  matrix_entry _b = *(matrix_entry*)b;
+
+  if (_a.row < _b.row)
+  {
+    return -1;
+  }
+  else if (_a.row > _b.row)
+  {
+    return 1;
+  }
+  else
+  {
+    return _a.col < _b.col;
+  }
+}
+
 // Generate a random, sparse, symmetric, positive-definite matrix
-sparse_matrix initMatrix()
+sparse_matrix init_matrix()
 {
   sparse_matrix M = {0, NULL};
   unsigned allocated = 0;
 
-  // TODO: this is too slow for large matrices
-  double *rowsum = malloc(params.n*sizeof(double));
+  double *rowsum = calloc(params.n, sizeof(double));
+
+  // Loop over rows
   for (unsigned y = 0; y < params.n; y++)
   {
-    rowsum[y] = 0.0;
-
-    for (unsigned x = y; x < params.n; x++)
+    int stride;
+    for (int x = y; x < params.n; x += stride)
     {
-      // Decide if element should be non-zero
-      // Always true for the diagonal
-      double p = rand() / (double)RAND_MAX;
-      if (p >= ((params.percent_nzero/100) - 1.0/params.n) && x != y)
-        continue;
+      // Calculate stride to next non-zero
+      // +/- 1 to make things a little less predicatable
+      stride = 100/params.percent_nzero + (2*(rand() / (double)RAND_MAX) - 1);
+      if (stride == 0)
+        stride = 1;
 
-      double value = rand() / (double)RAND_MAX;
-
+      // Allocate more element data if needed
       if (M.nnz+2 > allocated)
       {
-        allocated += 512;
+        allocated += 1024;
         M.elements = realloc(M.elements, allocated*sizeof(matrix_entry));
       }
+
+      double value = rand() / (double)RAND_MAX;
 
       matrix_entry element;
       element.value = value;
@@ -114,9 +134,84 @@ sparse_matrix initMatrix()
       M.elements[M.nnz] = element;
       M.nnz++;
 
-      rowsum[y] += value;
+      rowsum[x] += value;
     }
   }
+
+  qsort(M.elements, M.nnz, sizeof(matrix_entry), cmp_elem);
+
+  for (unsigned i = 0; i < M.nnz; i++)
+  {
+    matrix_entry element = M.elements[i];
+
+    // Increase the diagonal by the row-sum
+    if (element.col == element.row)
+    {
+      element.value += rowsum[element.row];
+    }
+
+    // Generate ECC and store in high order row bits
+    element.row |= ecc_compute_high8(element);
+
+    M.elements[i] = element;
+  }
+
+  free(rowsum);
+
+  return M;
+}
+
+// Generate a random, sparse, symmetric, positive-definite matrix
+sparse_matrix init_matrix_slow()
+{
+  sparse_matrix M = {0, NULL};
+  unsigned allocated = 0;
+
+  double *rowsum = calloc(params.n, sizeof(double));
+
+  for (unsigned y = 0; y < params.n; y++)
+  {
+    for (unsigned x = y; x < params.n; x++)
+    {
+      // Decide if element should be non-zero
+      // Always true for the diagonal
+      double p = rand() / (double)RAND_MAX;
+      if (p >= ((params.percent_nzero/100) - 1.0/params.n) && x != y)
+        continue;
+
+      // Allocate more element data if needed
+      if (M.nnz+2 > allocated)
+      {
+        allocated += 1024;
+        M.elements = realloc(M.elements, allocated*sizeof(matrix_entry));
+      }
+
+      double value = rand() / (double)RAND_MAX;
+
+      matrix_entry element;
+      element.value = value;
+      element.col   = x;
+      element.row   = y;
+
+      M.elements[M.nnz] = element;
+      M.nnz++;
+
+      rowsum[y] += value;
+
+      if (x == y)
+        continue;
+
+      element.col   = y;
+      element.row   = x;
+
+      M.elements[M.nnz] = element;
+      M.nnz++;
+
+      rowsum[x] += value;
+    }
+  }
+
+  qsort(M.elements, M.nnz, sizeof(matrix_entry), cmp_elem);
 
   for (unsigned i = 0; i < M.nnz; i++)
   {
@@ -130,6 +225,7 @@ sparse_matrix initMatrix()
 
     // Generate ECC and store in high order row bits
     element.row |= ecc_compute_high8(element);
+
     M.elements[i] = element;
   }
 
@@ -138,12 +234,11 @@ sparse_matrix initMatrix()
   return M;
 }
 
-
 int main(int argc, char *argv[])
 {
-  parseArguments(argc, argv);
+  parse_arguments(argc, argv);
 
-  sparse_matrix A = initMatrix();
+  sparse_matrix A = init_matrix();
   double *b = malloc(params.n*sizeof(double));
   double *x = malloc(params.n*sizeof(double));
   double *r = malloc(params.n*sizeof(double));
@@ -159,7 +254,7 @@ int main(int argc, char *argv[])
 
   printf("\n");
   printf("matrix size           = %u x %u\n", params.n, params.n);
-  printf("number of non-zeros   = %u (%.2lf%%)\n",
+  printf("number of non-zeros   = %u (%.4f%%)\n",
          A.nnz, A.nnz/((double)params.n*(double)params.n)*100);
   printf("maximum iterations    = %u\n", params.max_itrs);
   printf("convergence threshold = %g\n", params.conv_threshold);
@@ -179,7 +274,7 @@ int main(int argc, char *argv[])
     ((uint32_t*)(A.elements+index))[word] ^= 1<<bit;
   }
 
-  double start = getTimestamp();
+  double start = get_timestamp();
 
   // r = b - Ax;
   // p = r
@@ -233,11 +328,11 @@ int main(int argc, char *argv[])
 
     rr = rr_new;
 
-    if (itr % 10 == 0)
+    if (itr % 5 == 0)
       printf("iteration %5u :  rr = %12.4lf\n", itr, rr);
   }
 
-  double end = getTimestamp();
+  double end = get_timestamp();
 
   printf("\n");
   printf("ran for %u iterations\n", itr);
@@ -272,7 +367,7 @@ int main(int argc, char *argv[])
   return 0;
 }
 
-double getTimestamp()
+double get_timestamp()
 {
   struct timeval tv;
   gettimeofday(&tv, NULL);
@@ -293,13 +388,13 @@ int parseInt(const char *str)
   return strlen(next) ? -1 : value;
 }
 
-void parseArguments(int argc, char *argv[])
+void parse_arguments(int argc, char *argv[])
 {
   // Set defaults
-  params.n              = 1024;
-  params.max_itrs       = 5000;
+  params.n              = 1e6;
+  params.max_itrs       = 1000;
   params.percent_nzero  = 1.0;
-  params.conv_threshold = 0.00001;
+  params.conv_threshold = 0.001;
   params.inject_bitflip = 0;
 
   for (int i = 1; i < argc; i++)

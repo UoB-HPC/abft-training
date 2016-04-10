@@ -1,5 +1,5 @@
 CC      = cc
-CFLAGS  = -std=c99 -O3 -Wall
+CFLAGS  = -std=c99 -O3 -Wall -g
 LDFLAGS = -lm
 
 all: cg
