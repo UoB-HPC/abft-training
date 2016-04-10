@@ -58,6 +58,9 @@ uint32_t ecc_compute_col8(matrix_entry element);
 // using the error 'syndrome' generated from a 7-bit parity check.
 void     ecc_correct_col8(matrix_entry *element, uint32_t syndrome);
 
+// TODO: Comment and copy to other sources
+uint32_t ecc_compute_overall_parity(matrix_entry element);
+
 // Sparse matrix vector product
 // Multiplies `matrix` by `vector` and stores answer in `result`
 // The matrix and vector dimensions are `N`
@@ -73,14 +76,25 @@ void spmv(sparse_matrix matrix, double *vector, double *result, unsigned N)
     // Load non-zero element
     matrix_entry element = matrix.elements[i];
 
-    // TODO: Check ECC here
-    // Use the ecc_compute_col8 function to all of the parity bits
-    // If there was an error use the ecc_correct_col8 function to
-    // correct it
+    // Check overall parity bit
+    if (ecc_compute_overall_parity(element))
+    {
+      // Compute error syndrome from hamming bits
+      uint32_t syndrome = ecc_compute_col8(element);
+      if (syndrome)
+      {
+        ecc_correct_col8(&element, syndrome);
+      }
+      else
+      {
+        // Correct overall parity bit
+        element.col ^= 0x1 << 24;
+      }
+      matrix.elements[i] = element;
+    }
 
-    // TODO: Mask out the parity bits from the high order column bits so that we
-    // can use the column index
-    // Use the & operator (bitwise AND) with an approriate mask
+    // Mask out ECC from high order column bits
+    element.col &= 0x00FFFFFF;
 
     // Multiply element value by the corresponding vector value
     // and accumulate into result vector
@@ -99,9 +113,10 @@ int main(int argc, char *argv[])
   {
     matrix_entry element = A.elements[i];
 
-    // TODO: Generate parity bits and store in high order column bits
-    // Use the ecc_compute_col8 function to generate the parity bits
-    // and then add them to the column index with the | operator (bitwise OR)
+    // Generate ECC and store in high order column bits
+    element.col |= ecc_compute_col8(element);
+
+    element.col |= ecc_compute_overall_parity(element) << 24;
 
     A.elements[i] = element;
   }
@@ -567,6 +582,12 @@ uint32_t ecc_compute_col8(matrix_entry element)
 static int is_power_of_2(uint32_t x)
 {
   return ((x != 0) && !(x & (x - 1)));
+}
+
+uint32_t ecc_compute_overall_parity(matrix_entry element)
+{
+  uint32_t *data = (uint32_t*)&element;
+  return __builtin_parity(data[0] ^ data[1] ^ data[2] ^ data[3]);
 }
 
 void ecc_correct_col8(matrix_entry *element, uint32_t syndrome)

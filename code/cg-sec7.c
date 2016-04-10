@@ -139,7 +139,7 @@ int main(int argc, char *argv[])
            A.elements[index].col & 0x00FFFFFF,
            A.elements[index].row & 0x00FFFFFF);
 
-    ((uint32_t*)(A.elements+index))[word] ^= 1<<bit;
+    ((uint32_t*)(A.elements+index))[word] ^= 1<<(bit%32);
   }
 
   double start = get_timestamp();
@@ -492,39 +492,39 @@ sparse_matrix generate_sparse_matrix_slow(unsigned N, double percent_nonzero)
 }
 
 #define ECC7_P1_0 0x80AAAD5B
-#define ECC7_P1_1 0xAB555555
-#define ECC7_P1_2 0xAAAAAAAA
-#define ECC7_P1_3 0x55AAAAAA
+#define ECC7_P1_1 0x55555556
+#define ECC7_P1_2 0xAAAAAAAB
+#define ECC7_P1_3 0xAAAAAAAA
 
 #define ECC7_P2_0 0x4033366D
-#define ECC7_P2_1 0xCD999999
-#define ECC7_P2_2 0xCCCCCCCC
-#define ECC7_P2_3 0x66CCCCCC
+#define ECC7_P2_1 0x9999999B
+#define ECC7_P2_2 0xCCCCCCCD
+#define ECC7_P2_3 0xCCCCCCCC
 
 #define ECC7_P3_0 0x20C3C78E
-#define ECC7_P3_1 0xF1E1E1E1
-#define ECC7_P3_2 0xF0F0F0F0
-#define ECC7_P3_3 0x78F0F0F0
+#define ECC7_P3_1 0xE1E1E1E3
+#define ECC7_P3_2 0xF0F0F0F1
+#define ECC7_P3_3 0xF0F0F0F0
 
 #define ECC7_P4_0 0x10FC07F0
-#define ECC7_P4_1 0x01FE01FE
-#define ECC7_P4_2 0x00FF00FF
-#define ECC7_P4_3 0x80FF00FF
+#define ECC7_P4_1 0xFE01FE03
+#define ECC7_P4_2 0xFF00FF01
+#define ECC7_P4_3 0xFF00FF00
 
 #define ECC7_P5_0 0x08FFF800
-#define ECC7_P5_1 0x01FFFE00
-#define ECC7_P5_2 0x00FFFF00
-#define ECC7_P5_3 0x00FFFF00
+#define ECC7_P5_1 0xFFFE0003
+#define ECC7_P5_2 0xFFFF0001
+#define ECC7_P5_3 0xFFFF0000
 
 #define ECC7_P6_0 0x04000000
-#define ECC7_P6_1 0x01FFFFFF
-#define ECC7_P6_2 0xFF000000
-#define ECC7_P6_3 0x00FFFFFF
+#define ECC7_P6_1 0xFFFFFFFC
+#define ECC7_P6_2 0x00000001
+#define ECC7_P6_3 0xFFFFFFFF
 
 #define ECC7_P7_0 0x02000000
-#define ECC7_P7_1 0xFE000000
-#define ECC7_P7_2 0xFFFFFFFF
-#define ECC7_P7_3 0x00FFFFFF
+#define ECC7_P7_1 0x00000000
+#define ECC7_P7_2 0xFFFFFFFE
+#define ECC7_P7_3 0xFFFFFFFF
 
 uint32_t ecc_compute_col8(matrix_entry element)
 {
@@ -586,6 +586,8 @@ void ecc_correct_col8(matrix_entry *element, uint32_t syndrome)
   uint32_t data_bit = hamm_bit - (32-__builtin_clz(hamm_bit)) - 1;
   if (is_power_of_2(hamm_bit))
     data_bit = __builtin_clz(hamm_bit);
+  else if (data_bit >= 24)
+    data_bit += 8;
 
   // Unflip bit
   uint32_t word = data_bit / 32;
@@ -609,18 +611,20 @@ void gen_ecc7_masks()
           x++;
 
         uint32_t bit = w*32 + b;
-        if (bit >= (32-7) && bit < 32)
+        if (bit >= (32-8) && bit < 32)
         {
           if ((32-bit) == p)
             mask |= 0x1 << b;
         }
-        else if (x & (0x1<<(p-1)))
-          mask |= 0x1 << b;
-
-        x++;
+        else
+        {
+          if (x & (0x1<<(p-1)))
+          {
+            mask |= 0x1 << b;
+          }
+          x++;
+        }
       }
-      if (w == 0)
-        mask &= 0xFEFFFFFF;
       printf("#define ECC7_P%d_%d 0x%08X\n", p, w, mask);
     }
     printf("\n");
