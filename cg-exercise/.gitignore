@@ -2,3 +2,4 @@ cg
 cg-sec7
 cg-sec8
 *.dSYM
+*.o

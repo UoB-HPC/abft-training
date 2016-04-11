@@ -3,19 +3,20 @@ CFLAGS  = -std=c99 -O3 -Wall -g
 LDFLAGS = -lm
 
 EXES = cg cg-sec7 cg-sec8
+COMMON_OBJS = cg.o ecc.o
 
 all: $(EXES)
 
-cg: cg.c ecc.c spmv.c
-	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
+cg: spmv.c common.h $(COMMON_OBJS)
+	$(CC) $(CFLAGS) spmv.c      $(COMMON_OBJS) -o $@ $(LDFLAGS)
 
-cg-sec7: cg.c ecc.c spmv-sec7.c
-	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
+cg-sec7: spmv-sec7.c common.h $(COMMON_OBJS)
+	$(CC) $(CFLAGS) spmv-sec7.c $(COMMON_OBJS) -o $@ $(LDFLAGS)
 
-cg-sec8: cg.c ecc.c spmv-sec8.c
-	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
+cg-sec8: spmv-sec8.c common.h $(COMMON_OBJS)
+	$(CC) $(CFLAGS) spmv-sec8.c $(COMMON_OBJS) -o $@ $(LDFLAGS)
 
 clean:
-	rm -f $(EXES)
+	rm -f $(EXES) $(COMMON_OBJS)
 
 .PHONY: clean
