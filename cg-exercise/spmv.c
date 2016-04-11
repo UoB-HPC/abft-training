@@ -32,12 +32,12 @@ void spmv(sparse_matrix matrix, double *vector, double *result, unsigned N)
     matrix_entry element = matrix.elements[i];
 
     // TODO: Check ECC here
-    // Use the ecc_compute_col8 function to all of the parity bits
+    // Use the ecc_compute_col8 function to check all of the parity bits
     // If there was an error use the ecc_correct_col8 function to
     // correct it
 
-    // TODO: Mask out the parity bits from the high order column bits so that we
-    // can use the column index
+    // TODO: Mask out the parity bits from the high order column bits so that
+    // we can use the column index
     // Use the & operator (bitwise AND) with an approriate mask
 
     // Multiply element value by the corresponding vector value
