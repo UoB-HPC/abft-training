@@ -1,5 +1,20 @@
 #include "common.h"
 
+// Initialize ECC for a sparse matrix
+void init_matrix_ecc(sparse_matrix M)
+{
+  // Add ECC protection to matrix elements
+  for (unsigned i = 0; i < M.nnz; i++)
+  {
+    matrix_entry element = M.elements[i];
+
+    // Generate ECC and store in high order column bits
+    element.col |= ecc_compute_col8(element);
+
+    M.elements[i] = element;
+  }
+}
+
 // Sparse matrix vector product
 // Multiplies `matrix` by `vector` and stores answer in `result`
 // The matrix and vector dimensions are `N`
@@ -29,19 +44,5 @@ void spmv(sparse_matrix matrix, double *vector, double *result, unsigned N)
     // Multiply element value by the corresponding vector value
     // and accumulate into result vector
     result[element.col] += element.value * vector[element.row];
-  }
-}
-
-void init_matrix_ecc(sparse_matrix M)
-{
-  // Add ECC protection to matrix elements
-  for (unsigned i = 0; i < M.nnz; i++)
-  {
-    matrix_entry element = M.elements[i];
-
-    // Generate ECC and store in high order column bits
-    element.col |= ecc_compute_col8(element);
-
-    M.elements[i] = element;
   }
 }
