@@ -2,18 +2,20 @@ CC      = cc
 CFLAGS  = -std=c99 -O3 -Wall -g
 LDFLAGS = -lm
 
-all: cg cg-sec7 cg-sec8
+EXES = cg cg-sec7 cg-sec8
 
-cg: cg.c
+all: $(EXES)
+
+cg: cg.c ecc.c spmv.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
-cg-sec7: cg-sec7.c
+cg-sec7: cg.c ecc.c spmv-sec7.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
-cg-sec8: cg-sec8.c
+cg-sec8: cg.c ecc.c spmv-sec8.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
 clean:
-	rm -f cg
+	rm -f $(EXES)
 
 .PHONY: clean
