@@ -283,7 +283,7 @@ int compare_matrix_elements(const void *a, const void *b)
   }
   else
   {
-    return _a.col < _b.col;
+    return _a.col - _b.col;
   }
 }
 
