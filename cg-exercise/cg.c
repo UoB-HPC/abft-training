@@ -61,11 +61,21 @@ int main(int argc, char *argv[])
     int index = rand() % A.nnz;
     int bit   = rand() % 128;
     int word  = bit / 32;
+    ((uint32_t*)(A.elements+index))[word] ^= 1<<(bit%32);
     printf("*** flipping bit %d of (%d,%d) ***\n", bit,
            A.elements[index].col & 0x00FFFFFF,
            A.elements[index].row & 0x00FFFFFF);
 
-    ((uint32_t*)(A.elements+index))[word] ^= 1<<(bit%32);
+    if (params.inject_bitflip > 1)
+    {
+      // Flip a second bit immediately before or after the first bit
+      bit   = bit < 127 ? bit+1 : bit-1;
+      word  = bit / 32;
+      ((uint32_t*)(A.elements+index))[word] ^= 1<<(bit%32);
+      printf("*** flipping bit %d of (%d,%d) ***\n", bit,
+             A.elements[index].col & 0x00FFFFFF,
+             A.elements[index].row & 0x00FFFFFF);
+    }
   }
 
   double start = get_timestamp();
@@ -229,6 +239,10 @@ void parse_arguments(int argc, char *argv[])
     {
       params.inject_bitflip = 1;
     }
+    else if (!strcmp(argv[i], "--inject-bitflip2") || !strcmp(argv[i], "-xx"))
+    {
+      params.inject_bitflip = 2;
+    }
     else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h"))
     {
       printf("\n");
@@ -241,6 +255,7 @@ void parse_arguments(int argc, char *argv[])
         "  -n  --norder          N    Order of matrix A\n"
         "  -p  --percent-nzero   P    Percentage of A to be non-zero (approx)\n"
         "  -x  --inject-bitflip       Inject a random bit-flip into A\n"
+        "  -xx --inject-bitflip2      Inject a random double bit-flip into A\n"
       );
       printf("\n");
       exit(0);
