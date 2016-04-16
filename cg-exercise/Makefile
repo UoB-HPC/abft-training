@@ -2,7 +2,7 @@ CC      = cc
 CFLAGS  = -std=c99 -O3 -Wall -g
 LDFLAGS = -lm
 
-EXES = cg cg-sec7 cg-sec8
+EXES = cg cg-sec7 cg-sec8 cg-secded
 COMMON_OBJS = cg.o ecc.o
 
 all: $(EXES)
@@ -15,6 +15,9 @@ cg-sec7: spmv-sec7.c common.h $(COMMON_OBJS)
 
 cg-sec8: spmv-sec8.c common.h $(COMMON_OBJS)
 	$(CC) $(CFLAGS) spmv-sec8.c $(COMMON_OBJS) -o $@ $(LDFLAGS)
+
+cg-secded: spmv-secded.c common.h $(COMMON_OBJS)
+	$(CC) $(CFLAGS) spmv-secded.c $(COMMON_OBJS) -o $@ $(LDFLAGS)
 
 clean:
 	rm -f $(EXES) $(COMMON_OBJS)
