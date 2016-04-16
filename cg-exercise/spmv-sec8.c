@@ -1,3 +1,5 @@
+#include <stdio.h>
+
 #include "common.h"
 
 // Initialize ECC for a sparse matrix
@@ -45,6 +47,8 @@ void spmv(sparse_matrix matrix, double *vector, double *result, unsigned N)
       else
       {
         // Correct overall parity bit
+        printf("[ECC] corrected overall parity bit for %d,%d\n",
+              element.col & 0x00FFFFFF, element.row & 0x00FFFFFF);
         element.col ^= 0x1 << 24;
       }
       matrix.elements[i] = element;
