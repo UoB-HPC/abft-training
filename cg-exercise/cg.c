@@ -64,20 +64,18 @@ int main(int argc, char *argv[])
     // Flip a random bit in a random matrix element
     srand(time(NULL));
     int index = rand() % A.nnz;
-    int col   = A.elements[index].col & 0x00FFFFFF;
-    int row   = A.elements[index].row & 0x00FFFFFF;
-    int bit   = rand() % 128;
+    int bit   = rand() % 96;
     int word  = bit / 32;
     ((uint32_t*)(A.elements+index))[word] ^= 1<<(bit%32);
-    printf("*** flipping bit %d of element (%d,%d) ***\n", bit, col, row);
+    printf("*** flipping bit %d at index %d ***\n", bit, index);
 
     if (params.inject_bitflip > 1)
     {
       // Flip a second bit immediately before or after the first bit
-      bit   = bit < 127 ? bit+1 : bit-1;
+      bit   = bit < 95 ? bit+1 : bit-1;
       word  = bit / 32;
       ((uint32_t*)(A.elements+index))[word] ^= 1<<(bit%32);
-      printf("*** flipping bit %d of (%d,%d) ***\n", bit, col, row);
+      printf("*** flipping bit %d at index %d ***\n", bit, index);
     }
   }
 
@@ -271,7 +269,7 @@ void parse_arguments(int argc, char *argv[])
   }
 }
 
-int compare_matrix_elements(const void *a, const void *b)
+/*int compare_matrix_elements(const void *a, const void *b)
 {
   matrix_entry _a = *(matrix_entry*)a;
   matrix_entry _b = *(matrix_entry*)b;
@@ -288,19 +286,22 @@ int compare_matrix_elements(const void *a, const void *b)
   {
     return _a.col - _b.col;
   }
-}
+}*/
 
 // Load a sparse matrix from a matrix-market format file
 sparse_matrix load_sparse_matrix(int *N)
 {
   sparse_matrix M = {0, NULL};
 
-  FILE *file = fopen("matrices/shallow_water1.mtx", "r");
+  FILE *file = fopen("matrices/foo.mtx", "r");
   if (file == NULL)
   {
     printf("Failed to open matrix file\n");
     exit(1);
   }
+
+  MM_typecode matcode;
+  mm_read_banner(file, &matcode);
 
   int width, height, nnz;
   mm_read_mtx_crd_size(file, &width, &height, &nnz);
@@ -316,6 +317,11 @@ sparse_matrix load_sparse_matrix(int *N)
 
   M.nnz = 0;
   M.elements = malloc(scale*2*nnz*sizeof(matrix_entry));
+  M.row_indices = malloc(scale*2*nnz*sizeof(uint32_t) + 1);
+
+  int ri = 0;
+  M.row_indices[0] = 0;
+
   for (int i = 0; i < nnz; i++)
   {
     matrix_entry element;
@@ -326,39 +332,49 @@ sparse_matrix load_sparse_matrix(int *N)
     col--; /* adjust from 1-based to 0-based */
     row--;
 
+    while (ri < row)
+    {
+      M.row_indices[++ri] = M.nnz;
+    }
+
     element.col = col;
-    element.row = row;
-    M.elements[M.nnz] = element;
-    M.nnz++;
-
-    if (element.col == element.row)
-      continue;
-
-    element.row = col;
-    element.col = row;
     M.elements[M.nnz] = element;
     M.nnz++;
   }
 
-  qsort(M.elements, M.nnz, sizeof(matrix_entry), compare_matrix_elements);
+  //qsort(M.elements, M.nnz, sizeof(matrix_entry), compare_matrix_elements);
 
   nnz = M.nnz;
   for (int j = 1; j < scale; j++)
   {
-    for (int i = 0; i < nnz; i++)
+    for (int row = 0; row < height; row++)
     {
-      matrix_entry element = M.elements[i];
-      element.col = element.col + j*width;
-      element.row = element.row + j*height;
-      M.elements[M.nnz] = element;
-      M.nnz++;
+      uint32_t start = M.row_indices[row];
+      uint32_t end   = M.row_indices[row+1];
+      for (int i = start; i < end; i++)
+      {
+        matrix_entry element = M.elements[i];
+        element.col = element.col + j*width;
+
+        while (ri < row + j*height)
+        {
+          M.row_indices[++ri] = M.nnz;
+        }
+
+        M.elements[M.nnz] = element;
+        M.nnz++;
+      }
     }
   }
+
+  M.row_indices[scale*height] = M.nnz;
 
   *N = width*scale;
 
   return M;
 }
+
+/*
 
 // Generate a random, sparse, symmetric, positive-definite matrix
 sparse_matrix generate_sparse_matrix(unsigned N, double percent_nonzero)
@@ -504,3 +520,4 @@ sparse_matrix generate_sparse_matrix_slow(unsigned N, double percent_nonzero)
 
   return M;
 }
+*/

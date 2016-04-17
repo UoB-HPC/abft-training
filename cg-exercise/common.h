@@ -1,19 +1,21 @@
 #include <stdint.h>
 
+// TODO: fix comments
 // 128-bit matrix element
 // Bits  0 to  31 are the colum index
 // Bits 32 to  63 are the row index
 // Bits 64 to 127 are the floating point value
-typedef struct
+typedef struct __attribute__((packed))
 {
-  uint32_t col;
-  uint32_t row;
+  //uint32_t row;
   double value;
+  uint32_t col;
 } matrix_entry;
 
 typedef struct
 {
   unsigned nnz;
+  uint32_t *row_indices;
   matrix_entry *elements;
 } sparse_matrix;
 

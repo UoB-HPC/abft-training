@@ -21,27 +21,34 @@ void init_matrix_ecc(sparse_matrix M)
 // The matrix and vector dimensions are `N`
 void spmv(sparse_matrix matrix, double *vector, double *result, unsigned N)
 {
-  // Initialize result vector to zero
-  for (unsigned i = 0; i < N; i++)
-    result[i] = 0.0;
-
-  // Loop over non-zeros in matrix
-  for (unsigned i = 0; i < matrix.nnz; i++)
+  // Loop over rows
+  for (unsigned row = 0; row < N; row++)
   {
-    // Load non-zero element
-    matrix_entry element = matrix.elements[i];
+    double tmp = 0.0;
 
-    // TODO: Check ECC here
-    // Use the ecc_compute_col8 function to check all of the parity bits
-    // If there was an error use the ecc_correct_col8 function to
-    // correct it
+    // Loop over columns in this row
+    uint32_t start = matrix.row_indices[row];
+    uint32_t end   = matrix.row_indices[row+1];
+    for (int i = start; i < end; i++)
+    {
+      // Load non-zero element
+      matrix_entry element = matrix.elements[i];
 
-    // TODO: Mask out the parity bits from the high order column bits so that
-    // we can use the column index
-    // Use the & operator (bitwise AND) with an approriate mask
+      // TODO: Check ECC here
+      // Use the ecc_compute_col8 function to check all of the parity bits
+      // If there was an error use the ecc_correct_col8 function to
+      // correct it
 
-    // Multiply element value by the corresponding vector value
-    // and accumulate into result vector
-    result[element.col] += element.value * vector[element.row];
+      // TODO: Mask out the parity bits from the high order column bits so that
+      // we can use the column index
+      // Use the & operator (bitwise AND) with an approriate mask
+
+      // Multiply element value by the corresponding vector value
+      // and accumulate into row result
+      tmp += element.value * vector[element.col];
+    }
+
+    // Store row total into result vector
+    result[row] = tmp;
   }
 }
