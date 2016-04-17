@@ -59,12 +59,12 @@ int main(int argc, char *argv[])
     // Flip a random bit in a random matrix element
     srand(time(NULL));
     int index = rand() % A.nnz;
+    int col   = A.elements[index].col & 0x00FFFFFF;
+    int row   = A.elements[index].row & 0x00FFFFFF;
     int bit   = rand() % 128;
     int word  = bit / 32;
     ((uint32_t*)(A.elements+index))[word] ^= 1<<(bit%32);
-    printf("*** flipping bit %d of (%d,%d) ***\n", bit,
-           A.elements[index].col & 0x00FFFFFF,
-           A.elements[index].row & 0x00FFFFFF);
+    printf("*** flipping bit %d of element (%d,%d) ***\n", bit, col, row);
 
     if (params.inject_bitflip > 1)
     {
@@ -72,9 +72,7 @@ int main(int argc, char *argv[])
       bit   = bit < 127 ? bit+1 : bit-1;
       word  = bit / 32;
       ((uint32_t*)(A.elements+index))[word] ^= 1<<(bit%32);
-      printf("*** flipping bit %d of (%d,%d) ***\n", bit,
-             A.elements[index].col & 0x00FFFFFF,
-             A.elements[index].row & 0x00FFFFFF);
+      printf("*** flipping bit %d of (%d,%d) ***\n", bit, col, row);
     }
   }
 
