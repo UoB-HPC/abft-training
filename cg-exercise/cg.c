@@ -9,6 +9,8 @@
 #include <time.h>
 #include <sys/time.h>
 
+#include "mmio.h"
+
 #include "common.h"
 
 struct
@@ -25,11 +27,14 @@ sparse_matrix generate_sparse_matrix(unsigned N, double percent_nonzero);
 double        get_timestamp();
 void          parse_arguments(int argc, char *argv[]);
 
+sparse_matrix load_sparse_matrix(int *N);
+
 int main(int argc, char *argv[])
 {
   parse_arguments(argc, argv);
 
-  sparse_matrix A = generate_sparse_matrix(params.n, params.percent_nzero);
+  //sparse_matrix A = generate_sparse_matrix(params.n, params.percent_nzero);
+  sparse_matrix A = load_sparse_matrix(&params.n);
 
   init_matrix_ecc(A);
 
@@ -130,7 +135,7 @@ int main(int argc, char *argv[])
 
     rr = rr_new;
 
-    if (itr % 5 == 0)
+    if (itr % 1 == 0)
       printf("iteration %5u :  rr = %12.4lf\n", itr, rr);
   }
 
@@ -283,6 +288,76 @@ int compare_matrix_elements(const void *a, const void *b)
   {
     return _a.col - _b.col;
   }
+}
+
+// Load a sparse matrix from a matrix-market format file
+sparse_matrix load_sparse_matrix(int *N)
+{
+  sparse_matrix M = {0, NULL};
+
+  FILE *file = fopen("matrices/shallow_water1.mtx", "r");
+  if (file == NULL)
+  {
+    printf("Failed to open matrix file\n");
+    exit(1);
+  }
+
+  int width, height, nnz;
+  mm_read_mtx_crd_size(file, &width, &height, &nnz);
+  if (width != height)
+  {
+    printf("Matrix is not square\n");
+    exit(1);
+  }
+
+  printf("block size = %d x %d with %d nnz\n", width, height, nnz);
+
+  int scale = 100;
+
+  M.nnz = 0;
+  M.elements = malloc(scale*2*nnz*sizeof(matrix_entry));
+  for (int i = 0; i < nnz; i++)
+  {
+    matrix_entry element;
+
+    int col, row;
+
+    fscanf(file, "%d %d %lg\n", &col, &row, &element.value);
+    col--; /* adjust from 1-based to 0-based */
+    row--;
+
+    element.col = col;
+    element.row = row;
+    M.elements[M.nnz] = element;
+    M.nnz++;
+
+    if (element.col == element.row)
+      continue;
+
+    element.row = col;
+    element.col = row;
+    M.elements[M.nnz] = element;
+    M.nnz++;
+  }
+
+  qsort(M.elements, M.nnz, sizeof(matrix_entry), compare_matrix_elements);
+
+  nnz = M.nnz;
+  for (int j = 1; j < scale; j++)
+  {
+    for (int i = 0; i < nnz; i++)
+    {
+      matrix_entry element = M.elements[i];
+      element.col = element.col + j*width;
+      element.row = element.row + j*height;
+      M.elements[M.nnz] = element;
+      M.nnz++;
+    }
+  }
+
+  *N = width*scale;
+
+  return M;
 }
 
 // Generate a random, sparse, symmetric, positive-definite matrix
