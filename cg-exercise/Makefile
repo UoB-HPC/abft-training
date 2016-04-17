@@ -2,13 +2,16 @@ CC      = cc
 CFLAGS  = -std=c99 -O3 -Wall -g
 LDFLAGS = -lm
 
-EXES = cg cg-sec7 cg-sec8 cg-secded
+EXES = cg cg-constraints cg-sec7 cg-sec8 cg-secded
 COMMON_OBJS = cg.o ecc.o
 
 all: $(EXES)
 
 cg: spmv.c common.h $(COMMON_OBJS)
 	$(CC) $(CFLAGS) spmv.c      $(COMMON_OBJS) -o $@ $(LDFLAGS)
+
+cg-constraints: spmv-constraints.c common.h $(COMMON_OBJS)
+	$(CC) $(CFLAGS) spmv-constraints.c $(COMMON_OBJS) -o $@ $(LDFLAGS)
 
 cg-sec7: spmv-sec7.c common.h $(COMMON_OBJS)
 	$(CC) $(CFLAGS) spmv-sec7.c $(COMMON_OBJS) -o $@ $(LDFLAGS)
