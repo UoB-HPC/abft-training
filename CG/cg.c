@@ -20,7 +20,9 @@ struct
   double conv_threshold; // convergence threshold to stop CG
   const char *matrix_file;
 
-  int    inject_bitflip; // flip a random bit in the matrix
+  int    num_bit_flips;        // number of bits to flip in a matrix element
+  int    bitflip_region_start; // start of region in matrix element to bit-flip
+  int    bitflip_region_end;   // end of region in matrix element to bit-flip
 } params;
 
 double        get_timestamp();
@@ -60,25 +62,21 @@ int main(int argc, char *argv[])
   printf("convergence threshold = %g\n", params.conv_threshold);
   printf("\n");
 
-  if (params.inject_bitflip)
+  if (params.num_bit_flips)
   {
-    // Flip a random bit in a random matrix element
+    // Flip a set of random (consecutive) bits in a random matrix element
     srand(time(NULL));
     int index = rand() % A.nnz;
     int col   = A.elements[index].col & 0x00FFFFFF;
     int row   = A.elements[index].row & 0x00FFFFFF;
-    int bit   = rand() % 128;
-    int word  = bit / 32;
-    ((uint32_t*)(A.elements+index))[word] ^= 1<<(bit%32);
-    printf("*** flipping bit %d of element (%d,%d) ***\n", bit, col, row);
-
-    if (params.inject_bitflip > 1)
+    int region_size = (params.bitflip_region_end - params.bitflip_region_start);
+    region_size -= params.num_bit_flips;
+    int start_bit   = (rand() % region_size) + params.bitflip_region_start;
+    for (int bit = start_bit; bit < start_bit + params.num_bit_flips; bit++)
     {
-      // Flip a second bit immediately before or after the first bit
-      bit   = bit < 127 ? bit+1 : bit-1;
-      word  = bit / 32;
+      int word  = bit / 32;
       ((uint32_t*)(A.elements+index))[word] ^= 1<<(bit%32);
-      printf("*** flipping bit %d of (%d,%d) ***\n", bit, col, row);
+      printf("*** flipping bit %d of element (%d,%d) ***\n", bit, col, row);
     }
   }
 
@@ -201,7 +199,9 @@ void parse_arguments(int argc, char *argv[])
   // Set defaults
   params.max_itrs       = 1000;
   params.conv_threshold = 0.001;
-  params.inject_bitflip = 0;
+  params.num_bit_flips = 0;
+  params.bitflip_region_start = 0;
+  params.bitflip_region_end   = 128;
 
   params.num_blocks = 25;
   params.matrix_file = "matrices/shallow_water1/shallow_water1.mtx";
@@ -243,11 +243,26 @@ void parse_arguments(int argc, char *argv[])
     }
     else if (!strcmp(argv[i], "--inject-bitflip") || !strcmp(argv[i], "-x"))
     {
-      params.inject_bitflip = 1;
-    }
-    else if (!strcmp(argv[i], "--inject-bitflip2") || !strcmp(argv[i], "-xx"))
-    {
-      params.inject_bitflip = 2;
+      params.num_bit_flips = 1;
+      while ((i+1) < argc && argv[i+1][0] != '-')
+      {
+        i++;
+        if (!strcmp(argv[i], "INDEX"))
+        {
+          params.bitflip_region_start = 0;
+          params.bitflip_region_end   = 64;
+        }
+        else if (!strcmp(argv[i], "VALUE"))
+        {
+          params.bitflip_region_start = 64;
+          params.bitflip_region_end   = 128;
+        }
+        else if ((params.num_bit_flips = parse_int(argv[i])) < 1)
+        {
+          printf("Invalid bit-flip parameter\n");
+          exit(1);
+        }
+      }
     }
     else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h"))
     {
@@ -262,7 +277,10 @@ void parse_arguments(int argc, char *argv[])
         "  -m  --matrix-file     M    Path to matrix-market format file\n"
         "  -p  --percent-nzero   P    Percentage of A to be non-zero (approx)\n"
         "  -x  --inject-bitflip       Inject a random bit-flip into A\n"
-        "  -xx --inject-bitflip2      Inject a random double bit-flip into A\n"
+        "\n"
+        "  The -x|--inject-bitflip argument optionally takes a number to \n"
+        "  control how many bits to flip, and either INDEX or VALUE to \n"
+        "  restrict the region of bits in the matrix element to target.\n"
       );
       printf("\n");
       exit(0);
