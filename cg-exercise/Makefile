@@ -3,9 +3,10 @@ CFLAGS  = -std=c99 -O3 -Wall -g
 LDFLAGS = -lm
 
 EXES = cg cg-constraints cg-sec7 cg-sec8 cg-secded
-COMMON_OBJS = cg.o ecc.o
+COMMON_OBJS = cg.o ecc.o mmio.o
 
 all: $(EXES)
+	cd matrices && make
 
 cg: spmv.c common.h $(COMMON_OBJS)
 	$(CC) $(CFLAGS) spmv.c      $(COMMON_OBJS) -o $@ $(LDFLAGS)
