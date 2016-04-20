@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "common.h"
 
@@ -35,11 +36,11 @@ void spmv(sparse_matrix matrix, double *vector, double *result, unsigned N)
     // Load non-zero element
     matrix_entry element = matrix.elements[i];
 
-    // Check overall parity bit
-    if (ecc_compute_overall_parity(element))
+    // Check parity bits
+    uint32_t overall_parity = ecc_compute_overall_parity(element);
+    uint32_t syndrome = ecc_compute_col8(element);
+    if (overall_parity)
     {
-      // Compute error syndrome from hamming bits
-      uint32_t syndrome = ecc_compute_col8(element);
       if (syndrome)
       {
         ecc_correct_col8(&element, syndrome);
@@ -52,6 +53,16 @@ void spmv(sparse_matrix matrix, double *vector, double *result, unsigned N)
         element.col ^= 0x1 << 24;
       }
       matrix.elements[i] = element;
+    }
+    else
+    {
+      if (syndrome)
+      {
+        // Overall parity fine but error in syndrom
+        // Must be double-bit error - cannot correct this
+        printf("[ECC] Double-bit error detected\n");
+        exit(1);
+      }
     }
 
     // Mask out ECC from high order column bits
