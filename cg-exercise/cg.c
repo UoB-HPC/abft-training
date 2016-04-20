@@ -295,7 +295,7 @@ sparse_matrix load_sparse_matrix(int *N)
 {
   sparse_matrix M = {0, NULL};
 
-  FILE *file = fopen("matrices/shallow_water1.mtx", "r");
+  FILE *file = fopen("matrices/shallow_water1/shallow_water1.mtx", "r");
   if (file == NULL)
   {
     printf("Failed to open matrix file\n");
