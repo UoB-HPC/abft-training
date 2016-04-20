@@ -322,7 +322,11 @@ sparse_matrix load_sparse_matrix(int *N)
 
     int col, row;
 
-    fscanf(file, "%d %d %lg\n", &col, &row, &element.value);
+    if (fscanf(file, "%d %d %lg\n", &col, &row, &element.value) != 3)
+    {
+      printf("Failed to read matrix data\n");
+      exit(1);
+    }
     col--; /* adjust from 1-based to 0-based */
     row--;
 
