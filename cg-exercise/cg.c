@@ -203,7 +203,7 @@ void parse_arguments(int argc, char *argv[])
   params.conv_threshold = 0.001;
   params.inject_bitflip = 0;
 
-  params.num_blocks = 100;
+  params.num_blocks = 25;
   params.matrix_file = "matrices/shallow_water1/shallow_water1.mtx";
 
   for (int i = 1; i < argc; i++)
