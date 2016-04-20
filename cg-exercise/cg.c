@@ -15,46 +15,47 @@
 
 struct
 {
-  int    n;              // order of matrix
+  int    num_blocks;
   int    max_itrs;       // max iterations to run
-  double percent_nzero;  // percent of matrix to be non-zero
   double conv_threshold; // convergence threshold to stop CG
+  const char *matrix_file;
 
   int    inject_bitflip; // flip a random bit in the matrix
 } params;
 
-sparse_matrix generate_sparse_matrix(unsigned N, double percent_nonzero);
 double        get_timestamp();
+sparse_matrix load_sparse_matrix(int *N);
 void          parse_arguments(int argc, char *argv[]);
 
-sparse_matrix load_sparse_matrix(int *N);
 
 int main(int argc, char *argv[])
 {
   parse_arguments(argc, argv);
 
-  //sparse_matrix A = generate_sparse_matrix(params.n, params.percent_nzero);
-  sparse_matrix A = load_sparse_matrix(&params.n);
+  int N;
+  sparse_matrix A = load_sparse_matrix(&N);
 
   init_matrix_ecc(A);
 
-  double *b = malloc(params.n*sizeof(double));
-  double *x = malloc(params.n*sizeof(double));
-  double *r = malloc(params.n*sizeof(double));
-  double *p = malloc(params.n*sizeof(double));
-  double *w = malloc(params.n*sizeof(double));
+  double *b = malloc(N*sizeof(double));
+  double *x = malloc(N*sizeof(double));
+  double *r = malloc(N*sizeof(double));
+  double *p = malloc(N*sizeof(double));
+  double *w = malloc(N*sizeof(double));
 
   // Initialize vectors b and x
-  for (unsigned y = 0; y < params.n; y++)
+  for (unsigned y = 0; y < N; y++)
   {
     b[y] = rand() / (double)RAND_MAX;
     x[y] = 0.0;
   }
 
   printf("\n");
-  printf("matrix size           = %u x %u\n", params.n, params.n);
+  int block_size = N/params.num_blocks;
+  printf("matrix size           = %u x %u\n", N, N);
+  printf("matrix block size     = %u x %u\n", block_size, block_size);
   printf("number of non-zeros   = %u (%.4f%%)\n",
-         A.nnz, A.nnz/((double)params.n*(double)params.n)*100);
+         A.nnz, A.nnz/((double)N*(double)N)*100);
   printf("maximum iterations    = %u\n", params.max_itrs);
   printf("convergence threshold = %g\n", params.conv_threshold);
   printf("\n");
@@ -85,15 +86,15 @@ int main(int argc, char *argv[])
 
   // r = b - Ax;
   // p = r
-  spmv(A, x, r, params.n);
-  for (unsigned i = 0; i < params.n; i++)
+  spmv(A, x, r, N);
+  for (unsigned i = 0; i < N; i++)
   {
     p[i] = r[i] = b[i] - r[i];
   }
 
   // rr = rT * r
   double rr = 0.0;
-  for (unsigned i = 0; i < params.n; i++)
+  for (unsigned i = 0; i < N; i++)
   {
     rr += r[i] * r[i];
   }
@@ -102,11 +103,11 @@ int main(int argc, char *argv[])
   for (; itr < params.max_itrs && rr > params.conv_threshold; itr++)
   {
     // w = A*p
-    spmv(A, p, w, params.n);
+    spmv(A, p, w, N);
 
     // pw = pT * A*p
     double pw = 0.0;
-    for (unsigned i = 0; i < params.n; i++)
+    for (unsigned i = 0; i < N; i++)
     {
       pw += p[i] * w[i];
     }
@@ -117,7 +118,7 @@ int main(int argc, char *argv[])
     // r = r - alpha * A*p
     // rr_new = rT * r
     double rr_new = 0.0;
-    for (unsigned i = 0; i < params.n; i++)
+    for (unsigned i = 0; i < N; i++)
     {
       x[i] += alpha * p[i];
       r[i] -= alpha * w[i];
@@ -128,7 +129,7 @@ int main(int argc, char *argv[])
     double beta = rr_new / rr;
 
     // p = r + beta * p
-    for (unsigned  i = 0; i < params.n; i++)
+    for (unsigned  i = 0; i < N; i++)
     {
       p[i] = r[i] + beta*p[i];
     }
@@ -147,13 +148,13 @@ int main(int argc, char *argv[])
   printf("\ntime taken = %7.2lf ms\n\n", (end-start)*1e-3);
 
   // Compute Ax
-  double *Ax = malloc(params.n*sizeof(double));
-  spmv(A, x, Ax, params.n);
+  double *Ax = malloc(N*sizeof(double));
+  spmv(A, x, Ax, N);
 
   // Compare Ax to b
   double err_sq = 0.0;
   double max_err = 0.0;
-  for (unsigned i = 0; i < params.n; i++)
+  for (unsigned i = 0; i < N; i++)
   {
     double err = fabs(b[i] - Ax[i]);
     err_sq += err*err;
@@ -198,11 +199,12 @@ int parse_int(const char *str)
 void parse_arguments(int argc, char *argv[])
 {
   // Set defaults
-  params.n              = 1e6;
   params.max_itrs       = 1000;
-  params.percent_nzero  = 0.001;
   params.conv_threshold = 0.001;
   params.inject_bitflip = 0;
+
+  params.num_blocks = 100;
+  params.matrix_file = "matrices/shallow_water1/shallow_water1.mtx";
 
   for (int i = 1; i < argc; i++)
   {
@@ -222,21 +224,22 @@ void parse_arguments(int argc, char *argv[])
         exit(1);
       }
     }
-    else if (!strcmp(argv[i], "--norder") || !strcmp(argv[i], "-n"))
+    else if (!strcmp(argv[i], "--num-blocks") || !strcmp(argv[i], "-b"))
     {
-      if (++i >= argc || (params.n = parse_int(argv[i])) < 1)
+      if (++i >= argc || (params.num_blocks = parse_int(argv[i])) < 1)
       {
-        printf("Invalid matrix order\n");
+        printf("Invalid number of blocks\n");
         exit(1);
       }
     }
-    else if (!strcmp(argv[i], "--percent-nonzero") || !strcmp(argv[i], "-p"))
+    else if (!strcmp(argv[i], "--matrix-file") || !strcmp(argv[i], "-m"))
     {
-      if (++i >= argc || (params.percent_nzero = parse_double(argv[i])) < 0)
+      if (++i >= argc)
       {
-        printf("Invalid number of parents\n");
+        printf("Matrix filename required\n");
         exit(1);
       }
+      params.matrix_file = argv[i];
     }
     else if (!strcmp(argv[i], "--inject-bitflip") || !strcmp(argv[i], "-x"))
     {
@@ -253,9 +256,10 @@ void parse_arguments(int argc, char *argv[])
       printf("Options:\n");
       printf(
         "  -h  --help                 Print this message\n"
+        "  -b  --num-blocks      B    Number of times to block input matrix\n"
         "  -c  --convergence     C    Convergence threshold\n"
         "  -i  --iterations      I    Maximum number of iterations\n"
-        "  -n  --norder          N    Order of matrix A\n"
+        "  -m  --matrix-file     M    Path to matrix-market format file\n"
         "  -p  --percent-nzero   P    Percentage of A to be non-zero (approx)\n"
         "  -x  --inject-bitflip       Inject a random bit-flip into A\n"
         "  -xx --inject-bitflip2      Inject a random double bit-flip into A\n"
@@ -295,10 +299,10 @@ sparse_matrix load_sparse_matrix(int *N)
 {
   sparse_matrix M = {0, NULL};
 
-  FILE *file = fopen("matrices/shallow_water1/shallow_water1.mtx", "r");
+  FILE *file = fopen(params.matrix_file, "r");
   if (file == NULL)
   {
-    printf("Failed to open matrix file\n");
+    printf("Failed to open '%s'\n", params.matrix_file);
     exit(1);
   }
 
@@ -310,12 +314,8 @@ sparse_matrix load_sparse_matrix(int *N)
     exit(1);
   }
 
-  printf("block size = %d x %d with %d nnz\n", width, height, nnz);
-
-  int scale = 100;
-
   M.nnz = 0;
-  M.elements = malloc(scale*2*nnz*sizeof(matrix_entry));
+  M.elements = malloc(params.num_blocks*2*nnz*sizeof(matrix_entry));
   for (int i = 0; i < nnz; i++)
   {
     matrix_entry element;
@@ -343,7 +343,7 @@ sparse_matrix load_sparse_matrix(int *N)
   qsort(M.elements, M.nnz, sizeof(matrix_entry), compare_matrix_elements);
 
   nnz = M.nnz;
-  for (int j = 1; j < scale; j++)
+  for (int j = 1; j < params.num_blocks; j++)
   {
     for (int i = 0; i < nnz; i++)
     {
@@ -355,152 +355,7 @@ sparse_matrix load_sparse_matrix(int *N)
     }
   }
 
-  *N = width*scale;
-
-  return M;
-}
-
-// Generate a random, sparse, symmetric, positive-definite matrix
-sparse_matrix generate_sparse_matrix(unsigned N, double percent_nonzero)
-{
-  sparse_matrix M = {0, NULL};
-  unsigned allocated = 0;
-
-  double *rowsum = calloc(N, sizeof(double));
-
-  // Loop over rows
-  for (unsigned y = 0; y < N; y++)
-  {
-    int stride;
-    for (int x = y; x < N; x += stride)
-    {
-      // Calculate stride to next non-zero
-      // +/- 1 to make things a little less predicatable
-      stride = 100/percent_nonzero + (2*(rand() / (double)RAND_MAX) - 1);
-      if (stride == 0)
-        stride = 1;
-
-      // Allocate more element data if needed
-      if (M.nnz+2 > allocated)
-      {
-        allocated += 1024;
-        M.elements = realloc(M.elements, allocated*sizeof(matrix_entry));
-      }
-
-      double value = rand() / (double)RAND_MAX;
-
-      matrix_entry element;
-      element.value = value;
-      element.col   = x;
-      element.row   = y;
-
-      M.elements[M.nnz] = element;
-      M.nnz++;
-
-      rowsum[y] += value;
-
-      if (x == y)
-        continue;
-
-      element.value = value;
-      element.col   = y;
-      element.row   = x;
-
-      M.elements[M.nnz] = element;
-      M.nnz++;
-
-      rowsum[x] += value;
-    }
-  }
-
-  // TODO: Get rid of this sort if we don't care about element order
-  qsort(M.elements, M.nnz, sizeof(matrix_entry), compare_matrix_elements);
-
-  for (unsigned i = 0; i < M.nnz; i++)
-  {
-    matrix_entry element = M.elements[i];
-
-    // Increase the diagonal by the row-sum
-    if (element.col == element.row)
-    {
-      element.value += rowsum[element.row];
-    }
-
-    M.elements[i] = element;
-  }
-
-  free(rowsum);
-
-  return M;
-}
-
-// Generate a random, sparse, symmetric, positive-definite matrix
-// TODO: Delete this once confirmed that faster (less random) approach is fine
-sparse_matrix generate_sparse_matrix_slow(unsigned N, double percent_nonzero)
-{
-  sparse_matrix M = {0, NULL};
-  unsigned allocated = 0;
-
-  double *rowsum = calloc(N, sizeof(double));
-
-  for (unsigned y = 0; y < N; y++)
-  {
-    for (unsigned x = y; x < N; x++)
-    {
-      // Decide if element should be non-zero
-      // Always true for the diagonal
-      double p = rand() / (double)RAND_MAX;
-      if (p >= ((percent_nonzero/100) - 1.0/N) && x != y)
-        continue;
-
-      // Allocate more element data if needed
-      if (M.nnz+2 > allocated)
-      {
-        allocated += 1024;
-        M.elements = realloc(M.elements, allocated*sizeof(matrix_entry));
-      }
-
-      double value = rand() / (double)RAND_MAX;
-
-      matrix_entry element;
-      element.value = value;
-      element.col   = x;
-      element.row   = y;
-
-      M.elements[M.nnz] = element;
-      M.nnz++;
-
-      rowsum[y] += value;
-
-      if (x == y)
-        continue;
-
-      element.col   = y;
-      element.row   = x;
-
-      M.elements[M.nnz] = element;
-      M.nnz++;
-
-      rowsum[x] += value;
-    }
-  }
-
-  qsort(M.elements, M.nnz, sizeof(matrix_entry), compare_matrix_elements);
-
-  for (unsigned i = 0; i < M.nnz; i++)
-  {
-    matrix_entry element = M.elements[i];
-
-    // Increase the diagonal by the row-sum
-    if (element.col == element.row)
-    {
-      element.value += rowsum[element.row] + 1;
-    }
-
-    M.elements[i] = element;
-  }
-
-  free(rowsum);
+  *N = width*params.num_blocks;
 
   return M;
 }
